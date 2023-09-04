@@ -31,16 +31,30 @@ fn test_simple_data_enum_roundtrip() {
 mod std_tests {
     use std::collections::BTreeMap;
 
-    use serde_cbor::ser::{IoWrite, Serializer};
+    use serde::Deserialize;
+    use serde_cbor::de::{CustomDeserializerOptions, SliceRead};
+    use serde_cbor::ser::{CustomSerializerOptions, Serializer};
     use serde_cbor::value::Value;
-    use serde_cbor::{from_slice, to_vec};
+    use serde_cbor::{from_slice, to_vec, Deserializer};
+
+    pub fn from_slice_legacy<'a, T>(slice: &'a [u8]) -> Result<T, serde_cbor::Error>
+    where
+        T: Deserialize<'a>,
+    {
+        let options = CustomDeserializerOptions::new().set_accept_legacy_enums(true);
+        let mut deserializer = Deserializer::new_with_options(SliceRead::new(slice), options);
+        let value = Deserialize::deserialize(&mut deserializer)?;
+        Ok(value)
+    }
 
     pub fn to_vec_legacy<T>(value: &T) -> serde_cbor::Result<Vec<u8>>
     where
         T: serde::ser::Serialize,
     {
+        let options = CustomSerializerOptions::new().set_emum_as_map(false);
         let mut vec = Vec::new();
-        value.serialize(&mut Serializer::new(&mut IoWrite::new(&mut vec)).legacy_enums())?;
+        let mut serializer = Serializer::new_with_options(&mut vec, options);
+        value.serialize(&mut serializer)?;
         Ok(vec)
     }
 
@@ -218,17 +232,17 @@ mod std_tests {
         let empty_str_ds = from_slice(&empty_str_s).unwrap();
         assert_eq!(Bar::Empty, empty_str_ds);
 
-        let number_vec_ds = from_slice(&number_vec_s).unwrap();
+        let number_vec_ds = from_slice_legacy(&number_vec_s).unwrap();
         assert_eq!(Bar::Number(42), number_vec_ds);
         let number_map_ds = from_slice(&number_map_s).unwrap();
         assert_eq!(Bar::Number(42), number_map_ds);
 
-        let flag_vec_ds = from_slice(&flag_vec_s).unwrap();
+        let flag_vec_ds = from_slice_legacy(&flag_vec_s).unwrap();
         assert_eq!(Bar::Flag("foo".to_string(), true), flag_vec_ds);
         let flag_map_ds = from_slice(&flag_map_s).unwrap();
         assert_eq!(Bar::Flag("foo".to_string(), true), flag_map_ds);
 
-        let point_vec_ds = from_slice(&point_vec_s).unwrap();
+        let point_vec_ds = from_slice_legacy(&point_vec_s).unwrap();
         assert_eq!(Bar::Point { x: 5, y: -5 }, point_vec_ds);
         let point_map_ds = from_slice(&point_map_s).unwrap();
         assert_eq!(Bar::Point { x: 5, y: -5 }, point_map_ds);

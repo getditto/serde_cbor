@@ -87,7 +87,7 @@ impl Error {
         #[cfg(feature = "std")]
         {
             Error(ErrorImpl {
-                code: ErrorCode::Message(_msg.to_string()),
+                code: ErrorCode::Message(_msg.to_string().into()),
                 offset: 0,
             })
         }
@@ -105,7 +105,7 @@ impl Error {
         #[cfg(feature = "std")]
         {
             Error(ErrorImpl {
-                code: ErrorCode::Message(_msg.to_string()),
+                code: ErrorCode::Message(_msg.to_string().into()),
                 offset: 0,
             })
         }
@@ -138,8 +138,7 @@ impl Error {
             | ErrorCode::EofWhileParsingMap => Category::Eof,
             ErrorCode::LengthOutOfRange
             | ErrorCode::InvalidUtf8
-            | ErrorCode::UnassignedCode
-            | ErrorCode::UnexpectedCode
+            | ErrorCode::UnexpectedCode { .. }
             | ErrorCode::TrailingData
             | ErrorCode::ArrayTooShort
             | ErrorCode::ArrayTooLong
@@ -264,7 +263,7 @@ struct ErrorImpl {
 #[derive(Debug)]
 pub(crate) enum ErrorCode {
     #[cfg(feature = "std")]
-    Message(String),
+    Message(Box<String>),
     #[cfg(not(feature = "std"))]
     Message,
     #[cfg(feature = "std")]
@@ -278,8 +277,7 @@ pub(crate) enum ErrorCode {
     EofWhileParsingMap,
     LengthOutOfRange,
     InvalidUtf8,
-    UnassignedCode,
-    UnexpectedCode,
+    UnexpectedCode(u8),
     TrailingData,
     ArrayTooShort,
     ArrayTooLong,
@@ -305,8 +303,7 @@ impl fmt::Display for ErrorCode {
             ErrorCode::EofWhileParsingMap => f.write_str("EOF while parsing a map"),
             ErrorCode::LengthOutOfRange => f.write_str("length out of range"),
             ErrorCode::InvalidUtf8 => f.write_str("invalid UTF-8"),
-            ErrorCode::UnassignedCode => f.write_str("unassigned type"),
-            ErrorCode::UnexpectedCode => f.write_str("unexpected code"),
+            ErrorCode::UnexpectedCode(byte) => write!(f, "unexpected code {byte:#02X}"),
             ErrorCode::TrailingData => f.write_str("trailing data"),
             ErrorCode::ArrayTooShort => f.write_str("array too short"),
             ErrorCode::ArrayTooLong => f.write_str("array too long"),

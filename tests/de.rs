@@ -48,6 +48,7 @@ mod std_tests {
     use std::collections::BTreeMap;
 
     use serde::de as serde_de;
+    use serde_cbor::de::CustomDeserializerOptions;
     use serde_cbor::value::Value;
     use serde_cbor::{de, error, to_vec, Deserializer};
 
@@ -383,7 +384,7 @@ mod std_tests {
         let value_result: error::Result<Value> = de::from_slice(file);
         assert_eq!(
             value_result.unwrap_err().classify(),
-            serde_cbor::error::Category::Syntax
+            serde_cbor::error::Category::Eof
         );
     }
 
@@ -467,27 +468,13 @@ mod std_tests {
     where
         T: serde_de::Deserialize<'a>,
     {
-        let deserializer = Deserializer::from_slice(slice);
-        let deserializer = if !options.packed {
-            deserializer.disable_packed_format()
-        } else {
-            deserializer
-        };
-        let deserializer = if !options.named {
-            deserializer.disable_named_format()
-        } else {
-            deserializer
-        };
-        let deserializer = if !options.standard {
-            deserializer.disable_standard_enums()
-        } else {
-            deserializer
-        };
-        let mut deserializer = if !options.legacy {
-            deserializer.disable_legacy_enums()
-        } else {
-            deserializer
-        };
+        let de_options = CustomDeserializerOptions::new()
+            .set_accept_packed_format(options.packed)
+            .set_accept_named_format(options.named)
+            .set_accept_standard_enums(options.standard)
+            .set_accept_legacy_enums(options.legacy);
+        let mut deserializer =
+            Deserializer::new_with_options(de::SliceRead::new(slice), de_options);
         let value = serde_de::Deserialize::deserialize(&mut deserializer)?;
         let rest = &slice[deserializer.byte_offset()..];
 
@@ -556,7 +543,8 @@ mod std_tests {
             0x1a, // u32
             0x00, 0x00, 0x00, 0x0a, // 10 (dec)
         ];
-        let (_rest, value): (&[u8], Enum) = from_slice_stream(&v[..]).unwrap();
+        let (_rest, value): (&[u8], Enum) =
+            from_slice_stream_options(&v[..], Options::default()).unwrap();
         assert_eq!(value, Enum::NewType(10));
         let value: error::Result<(&[u8], Enum)> =
             from_slice_stream_options(&v[..], Options::default().no_legacy());
