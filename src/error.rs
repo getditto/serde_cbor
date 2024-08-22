@@ -277,7 +277,7 @@ pub(crate) enum ErrorCode {
     EofWhileParsingMap,
     LengthOutOfRange,
     InvalidUtf8,
-    UnexpectedCode(u8),
+    UnexpectedCode(ExpectedSet, u8),
     TrailingData,
     ArrayTooShort,
     ArrayTooLong,
@@ -303,7 +303,9 @@ impl fmt::Display for ErrorCode {
             ErrorCode::EofWhileParsingMap => f.write_str("EOF while parsing a map"),
             ErrorCode::LengthOutOfRange => f.write_str("length out of range"),
             ErrorCode::InvalidUtf8 => f.write_str("invalid UTF-8"),
-            ErrorCode::UnexpectedCode(byte) => write!(f, "unexpected code {byte:#02X}"),
+            ErrorCode::UnexpectedCode(expected, byte) => {
+                write!(f, "expected {expected:?} found byte {byte:#02X}")
+            }
             ErrorCode::TrailingData => f.write_str("trailing data"),
             ErrorCode::ArrayTooShort => f.write_str("array too short"),
             ErrorCode::ArrayTooLong => f.write_str("array too long"),
@@ -311,5 +313,87 @@ impl fmt::Display for ErrorCode {
             ErrorCode::WrongEnumFormat => f.write_str("wrong enum format"),
             ErrorCode::WrongStructFormat => f.write_str("wrong struct format"),
         }
+    }
+}
+
+#[allow(missing_docs)]
+#[derive(Copy, Clone)]
+pub(crate) struct ExpectedSet(u16);
+
+impl ExpectedSet {
+    pub(crate) const STRING: ExpectedSet = ExpectedSet(1);
+    pub(crate) const BYTES: ExpectedSet = ExpectedSet(2);
+    pub(crate) const INT_POS: ExpectedSet = ExpectedSet(4);
+    pub(crate) const INT_NEG: ExpectedSet = ExpectedSet(8);
+    pub(crate) const FLOAT: ExpectedSet = ExpectedSet(16);
+    pub(crate) const ARRAY: ExpectedSet = ExpectedSet(32);
+    pub(crate) const MAP: ExpectedSet = ExpectedSet(64);
+    pub(crate) const BOOL: ExpectedSet = ExpectedSet(128);
+    pub(crate) const NULL: ExpectedSet = ExpectedSet(256);
+
+    pub(crate) const fn from_valid<V: crate::de::ValidValues>() -> Self {
+        let mut v = 0u16;
+        if V::STRING {
+            v |= Self::STRING.0;
+        }
+        if V::BYTES {
+            v |= Self::BYTES.0;
+        }
+        if V::INT_POS {
+            v |= Self::INT_POS.0;
+        }
+        if V::INT_NEG {
+            v |= Self::INT_NEG.0;
+        }
+        if V::FLOAT {
+            v |= Self::FLOAT.0;
+        }
+        if V::ARRAY {
+            v |= Self::ARRAY.0;
+        }
+        if V::MAP {
+            v |= Self::MAP.0;
+        }
+        if V::BOOL {
+            v |= Self::BOOL.0;
+        }
+        if V::NULL {
+            v |= Self::NULL.0;
+        }
+        ExpectedSet(v)
+    }
+}
+
+impl std::fmt::Debug for ExpectedSet {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("{")?;
+        if self.0 & Self::STRING.0 != 0 {
+            f.write_str("String,")?;
+        }
+        if self.0 & Self::BYTES.0 != 0 {
+            f.write_str("Bytes,")?;
+        }
+        if self.0 & Self::INT_POS.0 != 0 {
+            f.write_str("IntPos,")?;
+        }
+        if self.0 & Self::INT_NEG.0 != 0 {
+            f.write_str("IntNeg,")?;
+        }
+        if self.0 & Self::FLOAT.0 != 0 {
+            f.write_str("Float,")?;
+        }
+        if self.0 & Self::ARRAY.0 != 0 {
+            f.write_str("Array,")?;
+        }
+        if self.0 & Self::MAP.0 != 0 {
+            f.write_str("Map,")?;
+        }
+        if self.0 & Self::BOOL.0 != 0 {
+            f.write_str("Bool,")?;
+        }
+        if self.0 & Self::NULL.0 != 0 {
+            f.write_str("Null,")?;
+        }
+        f.write_str("}")
     }
 }

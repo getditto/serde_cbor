@@ -10,7 +10,7 @@ use serde::de;
 #[cfg(feature = "std")]
 use std::io;
 
-use crate::error::{Error, ErrorCode, Result};
+use crate::error::{Error, ErrorCode, ExpectedSet, Result};
 #[cfg(not(feature = "unsealed_read_write"))]
 use crate::read::EitherLifetime;
 #[cfg(feature = "unsealed_read_write")]
@@ -181,17 +181,30 @@ pub trait DeserializerOptions {
     fn accept_named(&self) -> bool {
         true
     }
+
     #[inline]
     fn accept_packed(&self) -> bool {
         true
     }
+
     #[inline]
     fn accept_standard_enums(&self) -> bool {
         true
     }
+
     #[inline]
     fn accept_legacy_enums(&self) -> bool {
         false
+    }
+
+    #[inline]
+    fn to_custom(&self) -> CustomDeserializerOptions {
+        CustomDeserializerOptions {
+            accept_named: self.accept_named(),
+            accept_packed: self.accept_packed(),
+            accept_standard_enums: self.accept_standard_enums(),
+            accept_legacy_enums: self.accept_legacy_enums(),
+        }
     }
 }
 
@@ -236,12 +249,7 @@ impl DeserializerOptions for CustomDeserializerOptions {
 impl CustomDeserializerOptions {
     #[allow(missing_docs)]
     pub fn new() -> Self {
-        Self {
-            accept_named: true,
-            accept_packed: true,
-            accept_standard_enums: true,
-            accept_legacy_enums: false,
-        }
+        DefaultDeserializerOptions.to_custom()
     }
 
     /// Accept named variants and fields.
@@ -278,6 +286,7 @@ where
     /// Constructs a `Deserializer` from one of the possible serde_cbor input sources.
     ///
     /// `from_slice` and `from_reader` should normally be used instead of this method.
+    #[inline]
     pub fn new(read: R) -> Self {
         Deserializer::new_with_options(read, DefaultDeserializerOptions)
     }
@@ -291,11 +300,52 @@ where
     /// Constructs a `Deserializer` from one of the possible serde_cbor input sources.
     ///
     /// `from_slice` and `from_reader` should normally be used instead of this method.
+    #[inline]
     pub fn new_with_options(read: R, options: O) -> Self {
         Deserializer {
             read,
             remaining_depth: 128,
             options,
+        }
+    }
+
+    /// Don't accept named variants and fields.
+    #[inline]
+    pub fn disable_named_format(self) -> Deserializer<R, CustomDeserializerOptions> {
+        Deserializer {
+            read: self.read,
+            remaining_depth: self.remaining_depth,
+            options: self.options.to_custom().set_accept_named_format(false),
+        }
+    }
+
+    /// Don't accept numbered variants and fields.
+    #[inline]
+    pub fn disable_packed_format(self) -> Deserializer<R, CustomDeserializerOptions> {
+        Deserializer {
+            read: self.read,
+            remaining_depth: self.remaining_depth,
+            options: self.options.to_custom().set_accept_packed_format(false),
+        }
+    }
+
+    /// Don't accept the new enum format used by `serde_cbor` versions >= v0.10.
+    #[inline]
+    pub fn disable_standard_enums(self) -> Deserializer<R, CustomDeserializerOptions> {
+        Deserializer {
+            read: self.read,
+            remaining_depth: self.remaining_depth,
+            options: self.options.to_custom().set_accept_standard_enums(false),
+        }
+    }
+
+    /// Don't accept the old enum format used by `serde_cbor` versions <= v0.9.
+    #[inline]
+    pub fn disable_legacy_enums(self) -> Deserializer<R, CustomDeserializerOptions> {
+        Deserializer {
+            read: self.read,
+            remaining_depth: self.remaining_depth,
+            options: self.options.to_custom().set_accept_legacy_enums(false),
         }
     }
 
@@ -389,7 +439,7 @@ where
                     len as usize
                 }
                 0xff => break,
-                _ => return Err(self.error(ErrorCode::UnexpectedCode(byte))),
+                _ => return Err(self.error(ErrorCode::UnexpectedCode(ExpectedSet::STRING, byte))),
             };
 
             self.read.read_to_buffer(len)?;
@@ -442,7 +492,7 @@ where
                     len as usize
                 }
                 0xff => break,
-                _ => return Err(self.error(ErrorCode::UnexpectedCode(byte))),
+                _ => return Err(self.error(ErrorCode::UnexpectedCode(ExpectedSet::STRING, byte))),
             };
 
             self.read.read_to_buffer(len)?;
@@ -706,7 +756,10 @@ where
                 let value = self.parse_float(byte - 0xf9 + 2)?;
                 visitor.visit_f64(value)
             }
-            _ => Err(self.error(ErrorCode::UnexpectedCode(byte))),
+            _ => Err(self.error(ErrorCode::UnexpectedCode(
+                ExpectedSet::from_valid::<Valid>(),
+                byte,
+            ))),
         }
     }
 }
@@ -1440,7 +1493,7 @@ where
 }
 
 /// Customizes what `parse_value` will accept and generate code for
-trait ValidValues {
+pub(crate) trait ValidValues {
     const STRING: bool = false;
     const BYTES: bool = false;
     const INT_POS: bool = false;

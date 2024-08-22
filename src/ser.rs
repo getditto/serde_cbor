@@ -102,6 +102,15 @@ pub trait SerializerOptions {
     fn enum_as_map(&self) -> bool {
         true
     }
+
+    #[allow(missing_docs)]
+    #[inline]
+    fn to_custom(&self) -> CustomSerializerOptions {
+        CustomSerializerOptions {
+            emum_as_map: self.enum_as_map(),
+            packed: self.packed(),
+        }
+    }
 }
 
 /// Default serializer options
@@ -110,22 +119,25 @@ pub struct DefaultSerializerOptions;
 impl SerializerOptions for DefaultSerializerOptions {}
 
 /// Custom serializer options
-pub struct CustomSerializerOptions{
+pub struct CustomSerializerOptions {
     packed: bool,
     emum_as_map: bool,
 }
 
+#[allow(missing_docs)]
 impl CustomSerializerOptions {
-    ///
-    pub fn new() -> Self { Self { packed: false, emum_as_map: true } }
+    #[inline]
+    pub fn new() -> Self {
+        DefaultSerializerOptions.to_custom()
+    }
 
-    ///
+    #[inline]
     pub fn set_packed(mut self, new: bool) -> Self {
         self.packed = new;
         self
     }
 
-    ///
+    #[inline]
     pub fn set_emum_as_map(mut self, new: bool) -> Self {
         self.emum_as_map = new;
         self
@@ -174,6 +186,61 @@ where
     #[inline]
     pub fn new_with_options(writer: W, options: O) -> Self {
         Serializer { writer, options }
+    }
+
+    /// Choose concise/packed format for serializer.
+    ///
+    /// In the packed format enum variant names and field names
+    /// are replaced with numeric indizes to conserve space.
+    #[inline]
+    pub fn packed_format(self) -> Serializer<W, CustomSerializerOptions> {
+        Serializer {
+            writer: self.writer,
+            options: self.options.to_custom().set_packed(true),
+        }
+    }
+
+    /// Enable old enum format used by `serde_cbor` versions <= v0.9.
+    ///
+    /// The `legacy_enums` option determines how enums are encoded.
+    ///
+    /// This makes no difference when encoding and decoding enums using
+    /// this crate, but it shows up when decoding to a `Value` or decoding
+    /// in other languages.
+    ///
+    /// # Examples
+    ///
+    /// Given the following enum
+    ///
+    /// ```rust
+    /// enum Enum {
+    ///     Unit,
+    ///     NewType(i32),
+    ///     Tuple(String, bool),
+    ///     Struct{ x: i32, y: i32 },
+    /// }
+    /// ```
+    /// we will give the `Value` with the same encoding for each case using
+    /// JSON notation.
+    ///
+    /// ## Default encodings
+    ///
+    /// * `Enum::Unit` encodes as `"Unit"`
+    /// * `Enum::NewType(10)` encodes as `{"NewType": 10}`
+    /// * `Enum::Tuple("x", true)` encodes as `{"Tuple": ["x", true]}`
+    ///
+    /// ## Legacy encodings
+    ///
+    /// * `Enum::Unit` encodes as `"Unit"`
+    /// * `Enum::NewType(10)` encodes as `["NewType", 10]`
+    /// * `Enum::Tuple("x", true)` encodes as `["Tuple", "x", true]`
+    /// * `Enum::Struct{ x: 5, y: -5 }` encodes as `["Struct", {"x": 5, "y": -5}]`
+    #[inline]
+    pub fn legacy_enums(self) -> Serializer<W, CustomSerializerOptions> {
+        Serializer {
+            writer: self.writer,
+            options: self.options.to_custom().set_emum_as_map(false),
+        }
     }
 
     /// Writes a CBOR self-describe tag to the stream.
@@ -250,7 +317,7 @@ where
 impl<'a, W, O> ser::Serializer for &'a mut Serializer<W, O>
 where
     W: Write,
-    O: SerializerOptions
+    O: SerializerOptions,
 {
     type Ok = ();
     type Error = Error;
@@ -522,7 +589,11 @@ where
     }
 
     #[inline]
-    fn serialize_struct(self, _name: &'static str, len: usize) -> Result<StructSerializer<'a, W, O>> {
+    fn serialize_struct(
+        self,
+        _name: &'static str,
+        len: usize,
+    ) -> Result<StructSerializer<'a, W, O>> {
         self.write_u64(5, len as u64)?;
         Ok(StructSerializer { ser: self, idx: 0 })
     }
