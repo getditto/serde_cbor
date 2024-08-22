@@ -155,6 +155,12 @@ impl SerializerOptions for CustomSerializerOptions {
     }
 }
 
+impl Default for CustomSerializerOptions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A structure for serializing Rust values to CBOR.
 #[derive(Debug)]
 pub struct Serializer<W, O = DefaultSerializerOptions> {

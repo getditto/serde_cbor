@@ -221,12 +221,6 @@ pub struct CustomDeserializerOptions {
     accept_legacy_enums: bool,
 }
 
-impl Default for CustomDeserializerOptions {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl DeserializerOptions for CustomDeserializerOptions {
     #[inline]
     fn accept_named(&self) -> bool {
@@ -274,6 +268,13 @@ impl CustomDeserializerOptions {
     pub fn set_accept_legacy_enums(mut self, new: bool) -> Self {
         self.accept_legacy_enums = new;
         self
+    }
+}
+
+impl Default for CustomDeserializerOptions {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
     }
 }
 
