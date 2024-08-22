@@ -503,7 +503,7 @@ where
     }
 
     #[cfg(feature = "tags")]
-    fn handle_tagged_value<V>(&mut self, tag: u64, visitor: V) -> Result<V::Value>
+    fn handle_tagged_value<V, Valid>(&mut self, tag: u64, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {

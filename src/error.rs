@@ -364,7 +364,7 @@ impl ExpectedSet {
     }
 }
 
-impl std::fmt::Debug for ExpectedSet {
+impl core::fmt::Debug for ExpectedSet {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str("{")?;
         if self.0 & Self::STRING.0 != 0 {
