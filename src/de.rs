@@ -1104,8 +1104,9 @@ where
             }
         }
 
-        // TODO: accept_packed checks are slightly broken here. If `accept packed` is `false`
-        // the map deserializer will refuse integer keys, erroring with WrongStructFormat.
+        // TODO: the accept_packed check is broken here. If `accept packed` is `false`
+        // the map deserializer will refuse integer keys (which are valid in cbor),
+        // erroring with WrongStructFormat.
         if !self.de.options.accept_named() || !self.de.options.accept_packed() {
             match self.de.peek()? {
                 Some(_byte @ 0x00..=0x1b) if !self.de.options.accept_packed() => {

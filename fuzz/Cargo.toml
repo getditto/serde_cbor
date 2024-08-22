@@ -10,6 +10,11 @@ cargo-fuzz = true
 
 [dependencies.serde_cbor]
 path = ".."
+
+[dependencies.serde_cbor_original]
+git = "https://github.com/pyfisch/cbor.git"
+package = "serde_cbor"
+
 [dependencies.libfuzzer-sys]
 git = "https://github.com/rust-fuzz/libfuzzer-sys.git"
 
