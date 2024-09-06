@@ -51,7 +51,7 @@ mod std_tests {
     where
         T: serde::ser::Serialize,
     {
-        let options = CustomSerializerOptions::new().set_emum_as_map(false);
+        let options = CustomSerializerOptions::new().set_enum_as_map(false);
         let mut vec = Vec::new();
         let mut serializer = Serializer::new_with_options(&mut vec, options);
         value.serialize(&mut serializer)?;

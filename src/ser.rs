@@ -34,7 +34,7 @@ where
 {
     let options = CustomSerializerOptions {
         packed: true,
-        emum_as_map: true,
+        enum_as_map: true,
     };
     let mut vec = Vec::new();
     let mut serializer = Serializer::new_with_options(&mut vec, options);
@@ -138,8 +138,8 @@ impl CustomSerializerOptions {
     }
 
     #[inline]
-    pub fn set_emum_as_map(mut self, new: bool) -> Self {
-        self.emum_as_map = new;
+    pub fn set_enum_as_map(mut self, new: bool) -> Self {
+        self.enum_as_map = new;
         self
     }
 }
@@ -245,7 +245,7 @@ where
     pub fn legacy_enums(self) -> Serializer<W, CustomSerializerOptions> {
         Serializer {
             writer: self.writer,
-            options: self.options.to_custom().set_emum_as_map(false),
+            options: self.options.to_custom().set_enum_as_map(false),
         }
     }
 
