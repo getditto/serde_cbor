@@ -387,7 +387,7 @@ where
         self.read.discard();
     }
 
-    #[cold]
+    #[inline]
     fn error(&self, reason: ErrorCode) -> Error {
         let offset = self.read.offset();
         Error::syntax(reason, offset)
@@ -449,6 +449,7 @@ where
         Ok(self.read.take_buffer())
     }
 
+    #[inline]
     fn convert_str<'a>(buf: &'a [u8], offset: u64) -> Result<&'a str> {
         match str::from_utf8(buf) {
             Ok(s) => Ok(s),
@@ -456,6 +457,7 @@ where
         }
     }
 
+    #[inline]
     fn parse_str<V>(&mut self, len: Option<usize>, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
@@ -524,6 +526,7 @@ where
         self.recursion_checked(|de| de.parse_value::<_, Valid>(visitor))
     }
 
+    #[inline]
     fn recursion_checked<F, T>(&mut self, f: F) -> Result<T>
     where
         F: FnOnce(&mut Deserializer<R, O>) -> Result<T>,
@@ -629,6 +632,7 @@ where
         })
     }
 
+    #[inline]
     fn parse_float(&mut self, magnitude: u8) -> Result<f64> {
         let mut buf = [0; 8];
         let bytes = 1 << (magnitude - 1);
@@ -752,7 +756,6 @@ where
             // Major type 7: floating-point numbers and other simple data types that need no content
             0xf4..=0xf5 if Valid::BOOL => visitor.visit_bool(byte == 0xf5),
             0xf6..=0xf7 if Valid::NULL => visitor.visit_unit(),
-            // 0xf8 => Err(self.error(ErrorCode::UnassignedCode)),
             0xf9..=0xfb if Valid::FLOAT => {
                 let value = self.parse_float(byte - 0xf9 + 2)?;
                 visitor.visit_f64(value)
