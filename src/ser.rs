@@ -107,7 +107,7 @@ pub trait SerializerOptions {
     #[inline]
     fn to_custom(&self) -> CustomSerializerOptions {
         CustomSerializerOptions {
-            emum_as_map: self.enum_as_map(),
+            enum_as_map: self.enum_as_map(),
             packed: self.packed(),
         }
     }
@@ -121,7 +121,7 @@ impl SerializerOptions for DefaultSerializerOptions {}
 /// Custom serializer options
 pub struct CustomSerializerOptions {
     packed: bool,
-    emum_as_map: bool,
+    enum_as_map: bool,
 }
 
 #[allow(missing_docs)]
@@ -151,7 +151,7 @@ impl SerializerOptions for CustomSerializerOptions {
     }
     #[inline]
     fn enum_as_map(&self) -> bool {
-        self.emum_as_map
+        self.enum_as_map
     }
 }
 
