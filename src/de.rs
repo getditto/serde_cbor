@@ -1,5 +1,6 @@
 //! Deserialization.
 
+use core::convert::TryInto;
 use core::f32;
 use core::marker::PhantomData;
 use core::result;
@@ -9,7 +10,7 @@ use serde::de;
 #[cfg(feature = "std")]
 use std::io;
 
-use crate::error::{Error, ErrorCode, Result};
+use crate::error::{Error, ErrorCode, ExpectedSet, Result};
 #[cfg(not(feature = "unsealed_read_write"))]
 use crate::read::EitherLifetime;
 #[cfg(feature = "unsealed_read_write")]
@@ -116,7 +117,7 @@ where
 pub fn from_reader<T, R>(reader: R) -> Result<T>
 where
     T: de::DeserializeOwned,
-    R: io::Read,
+    R: io::Read + Send,
 {
     let mut deserializer = Deserializer::from_reader(reader);
     let value = de::Deserialize::deserialize(&mut deserializer)?;
@@ -126,13 +127,10 @@ where
 
 /// A Serde `Deserialize`r of CBOR data.
 #[derive(Debug)]
-pub struct Deserializer<R> {
+pub struct Deserializer<R, O = DefaultDeserializerOptions> {
     read: R,
     remaining_depth: u8,
-    accept_named: bool,
-    accept_packed: bool,
-    accept_standard_enums: bool,
-    accept_legacy_enums: bool,
+    options: O,
 }
 
 #[cfg(feature = "std")]
@@ -176,6 +174,112 @@ impl<'a, 'b> Deserializer<SliceReadFixed<'a, 'b>> {
     }
 }
 
+/// Deserializer Options trait
+#[allow(missing_docs)]
+pub trait DeserializerOptions {
+    #[inline]
+    fn accept_named(&self) -> bool {
+        true
+    }
+
+    #[inline]
+    fn accept_packed(&self) -> bool {
+        true
+    }
+
+    #[inline]
+    fn accept_standard_enums(&self) -> bool {
+        true
+    }
+
+    #[inline]
+    fn accept_legacy_enums(&self) -> bool {
+        false
+    }
+
+    #[inline]
+    fn to_custom(&self) -> CustomDeserializerOptions {
+        CustomDeserializerOptions {
+            accept_named: self.accept_named(),
+            accept_packed: self.accept_packed(),
+            accept_standard_enums: self.accept_standard_enums(),
+            accept_legacy_enums: self.accept_legacy_enums(),
+        }
+    }
+}
+
+/// Default Deserializer Options
+#[derive(Debug)]
+pub struct DefaultDeserializerOptions;
+
+/// Custom Deserializer Options
+#[derive(Debug)]
+pub struct CustomDeserializerOptions {
+    accept_named: bool,
+    accept_packed: bool,
+    accept_standard_enums: bool,
+    accept_legacy_enums: bool,
+}
+
+impl DeserializerOptions for CustomDeserializerOptions {
+    #[inline]
+    fn accept_named(&self) -> bool {
+        self.accept_named
+    }
+    #[inline]
+    fn accept_packed(&self) -> bool {
+        self.accept_packed
+    }
+    #[inline]
+    fn accept_standard_enums(&self) -> bool {
+        self.accept_standard_enums
+    }
+    #[inline]
+    fn accept_legacy_enums(&self) -> bool {
+        self.accept_legacy_enums
+    }
+}
+
+impl CustomDeserializerOptions {
+    #[allow(missing_docs)]
+    pub fn new() -> Self {
+        DefaultDeserializerOptions.to_custom()
+    }
+
+    /// Accept named variants and fields.
+    pub fn set_accept_named_format(mut self, new: bool) -> Self {
+        self.accept_named = new;
+        self
+    }
+
+    /// Accept numbered variants and fields.
+    pub fn set_accept_packed_format(mut self, new: bool) -> Self {
+        self.accept_packed = new;
+        self
+    }
+
+    /// Accept the new enum format used by `serde_cbor` versions >= v0.10.
+    pub fn set_accept_standard_enums(mut self, new: bool) -> Self {
+        self.accept_standard_enums = new;
+        self
+    }
+
+    /// Accept the old enum format used by `serde_cbor` versions <= v0.9.
+    pub fn set_accept_legacy_enums(mut self, new: bool) -> Self {
+        self.accept_legacy_enums = new;
+        self
+    }
+}
+
+impl Default for CustomDeserializerOptions {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DeserializerOptions for DefaultDeserializerOptions {}
+
 impl<'de, R> Deserializer<R>
 where
     R: Read<'de>,
@@ -183,39 +287,67 @@ where
     /// Constructs a `Deserializer` from one of the possible serde_cbor input sources.
     ///
     /// `from_slice` and `from_reader` should normally be used instead of this method.
+    #[inline]
     pub fn new(read: R) -> Self {
+        Deserializer::new_with_options(read, DefaultDeserializerOptions)
+    }
+}
+
+impl<'de, R, O> Deserializer<R, O>
+where
+    R: Read<'de>,
+    O: DeserializerOptions,
+{
+    /// Constructs a `Deserializer` from one of the possible serde_cbor input sources.
+    ///
+    /// `from_slice` and `from_reader` should normally be used instead of this method.
+    #[inline]
+    pub fn new_with_options(read: R, options: O) -> Self {
         Deserializer {
             read,
             remaining_depth: 128,
-            accept_named: true,
-            accept_packed: true,
-            accept_standard_enums: true,
-            accept_legacy_enums: true,
+            options,
         }
     }
 
     /// Don't accept named variants and fields.
-    pub fn disable_named_format(mut self) -> Self {
-        self.accept_named = false;
-        self
+    #[inline]
+    pub fn disable_named_format(self) -> Deserializer<R, CustomDeserializerOptions> {
+        Deserializer {
+            read: self.read,
+            remaining_depth: self.remaining_depth,
+            options: self.options.to_custom().set_accept_named_format(false),
+        }
     }
 
     /// Don't accept numbered variants and fields.
-    pub fn disable_packed_format(mut self) -> Self {
-        self.accept_packed = false;
-        self
+    #[inline]
+    pub fn disable_packed_format(self) -> Deserializer<R, CustomDeserializerOptions> {
+        Deserializer {
+            read: self.read,
+            remaining_depth: self.remaining_depth,
+            options: self.options.to_custom().set_accept_packed_format(false),
+        }
     }
 
     /// Don't accept the new enum format used by `serde_cbor` versions >= v0.10.
-    pub fn disable_standard_enums(mut self) -> Self {
-        self.accept_standard_enums = false;
-        self
+    #[inline]
+    pub fn disable_standard_enums(self) -> Deserializer<R, CustomDeserializerOptions> {
+        Deserializer {
+            read: self.read,
+            remaining_depth: self.remaining_depth,
+            options: self.options.to_custom().set_accept_standard_enums(false),
+        }
     }
 
     /// Don't accept the old enum format used by `serde_cbor` versions <= v0.9.
-    pub fn disable_legacy_enums(mut self) -> Self {
-        self.accept_legacy_enums = false;
-        self
+    #[inline]
+    pub fn disable_legacy_enums(self) -> Deserializer<R, CustomDeserializerOptions> {
+        Deserializer {
+            read: self.read,
+            remaining_depth: self.remaining_depth,
+            options: self.options.to_custom().set_accept_legacy_enums(false),
+        }
     }
 
     /// This method should be called after a value has been deserialized to ensure there is no
@@ -229,7 +361,7 @@ where
 
     /// Turn a CBOR deserializer into an iterator over values of type T.
     #[allow(clippy::should_implement_trait)] // Trait doesn't allow unconstrained T.
-    pub fn into_iter<T>(self) -> StreamDeserializer<'de, R, T>
+    pub fn into_iter<T>(self) -> StreamDeserializer<'de, R, T, O>
     where
         T: de::Deserialize<'de>,
     {
@@ -240,23 +372,37 @@ where
         }
     }
 
+    #[inline]
     fn next(&mut self) -> Result<Option<u8>> {
         self.read.next()
     }
 
+    #[inline]
     fn peek(&mut self) -> Result<Option<u8>> {
         self.read.peek()
     }
 
+    #[inline]
     fn consume(&mut self) {
         self.read.discard();
     }
 
+    #[inline]
     fn error(&self, reason: ErrorCode) -> Error {
         let offset = self.read.offset();
         Error::syntax(reason, offset)
     }
 
+    #[inline]
+    fn parse_uint(&mut self, magnitude: u8) -> Result<u64> {
+        let mut buf = [0; 8];
+        let bytes = 1 << (magnitude - 1);
+        let buf_view = &mut buf[8 - bytes..];
+        self.read.read_into(buf_view)?;
+        Ok(u64::from_be_bytes(buf))
+    }
+
+    #[inline]
     fn parse_u8(&mut self) -> Result<u8> {
         match self.next()? {
             Some(byte) => Ok(byte),
@@ -264,132 +410,65 @@ where
         }
     }
 
-    fn parse_u16(&mut self) -> Result<u16> {
-        let mut buf = [0; 2];
-        self.read
-            .read_into(&mut buf)
-            .map(|()| u16::from_be_bytes(buf))
-    }
-
-    fn parse_u32(&mut self) -> Result<u32> {
-        let mut buf = [0; 4];
-        self.read
-            .read_into(&mut buf)
-            .map(|()| u32::from_be_bytes(buf))
-    }
-
-    fn parse_u64(&mut self) -> Result<u64> {
-        let mut buf = [0; 8];
-        self.read
-            .read_into(&mut buf)
-            .map(|()| u64::from_be_bytes(buf))
-    }
-
-    fn parse_bytes<V>(&mut self, len: usize, visitor: V) -> Result<V::Value>
+    fn parse_bytes<V>(&mut self, len: Option<usize>, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        match self.read.read(len)? {
+        let read = if let Some(len) = len {
+            self.read.read(len)
+        } else {
+            self.read_indefinite_bytes()
+        }?;
+        match read {
             EitherLifetime::Long(buf) => visitor.visit_borrowed_bytes(buf),
             EitherLifetime::Short(buf) => visitor.visit_bytes(buf),
         }
     }
 
-    fn parse_indefinite_bytes<V>(&mut self, visitor: V) -> Result<V::Value>
-    where
-        V: de::Visitor<'de>,
-    {
+    #[cold]
+    fn read_indefinite_bytes(&mut self) -> Result<EitherLifetime<'_, 'de>> {
         self.read.clear_buffer();
         loop {
             let byte = self.parse_u8()?;
             let len = match byte {
                 0x40..=0x57 => byte as usize - 0x40,
-                0x58 => self.parse_u8()? as usize,
-                0x59 => self.parse_u16()? as usize,
-                0x5a => self.parse_u32()? as usize,
-                0x5b => {
-                    let len = self.parse_u64()?;
+                0x58..=0x5b => {
+                    let len = self.parse_uint(byte - 0x57)?;
                     if len > usize::max_value() as u64 {
                         return Err(self.error(ErrorCode::LengthOutOfRange));
                     }
                     len as usize
                 }
                 0xff => break,
-                _ => return Err(self.error(ErrorCode::UnexpectedCode)),
+                _ => return Err(self.error(ErrorCode::UnexpectedCode(ExpectedSet::STRING, byte))),
             };
 
             self.read.read_to_buffer(len)?;
         }
 
-        match self.read.take_buffer() {
-            EitherLifetime::Long(buf) => visitor.visit_borrowed_bytes(buf),
-            EitherLifetime::Short(buf) => visitor.visit_bytes(buf),
-        }
+        Ok(self.read.take_buffer())
     }
 
-    fn convert_str<'a>(buf: &'a [u8], buf_end_offset: u64) -> Result<&'a str> {
+    #[inline]
+    fn convert_str<'a>(buf: &'a [u8], offset: u64) -> Result<&'a str> {
         match str::from_utf8(buf) {
             Ok(s) => Ok(s),
-            Err(e) => {
-                let shift = buf.len() - e.valid_up_to();
-                let offset = buf_end_offset - shift as u64;
-                Err(Error::syntax(ErrorCode::InvalidUtf8, offset))
-            }
+            Err(_) => Err(Error::syntax(ErrorCode::InvalidUtf8, offset)),
         }
     }
 
-    fn parse_str<V>(&mut self, len: usize, visitor: V) -> Result<V::Value>
+    #[inline]
+    fn parse_str<V>(&mut self, len: Option<usize>, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        if let Some(offset) = self.read.offset().checked_add(len as u64) {
-            match self.read.read(len)? {
-                EitherLifetime::Long(buf) => {
-                    let s = Self::convert_str(buf, offset)?;
-                    visitor.visit_borrowed_str(s)
-                }
-                EitherLifetime::Short(buf) => {
-                    let s = Self::convert_str(buf, offset)?;
-                    visitor.visit_str(s)
-                }
-            }
-        } else {
-            // An overflow would have occured.
-            Err(Error::syntax(
-                ErrorCode::LengthOutOfRange,
-                self.read.offset(),
-            ))
-        }
-    }
-
-    fn parse_indefinite_str<V>(&mut self, visitor: V) -> Result<V::Value>
-    where
-        V: de::Visitor<'de>,
-    {
-        self.read.clear_buffer();
-        loop {
-            let byte = self.parse_u8()?;
-            let len = match byte {
-                0x60..=0x77 => byte as usize - 0x60,
-                0x78 => self.parse_u8()? as usize,
-                0x79 => self.parse_u16()? as usize,
-                0x7a => self.parse_u32()? as usize,
-                0x7b => {
-                    let len = self.parse_u64()?;
-                    if len > usize::max_value() as u64 {
-                        return Err(self.error(ErrorCode::LengthOutOfRange));
-                    }
-                    len as usize
-                }
-                0xff => break,
-                _ => return Err(self.error(ErrorCode::UnexpectedCode)),
-            };
-
-            self.read.read_to_buffer(len)?;
-        }
-
         let offset = self.read.offset();
-        match self.read.take_buffer() {
+        let read = if let Some(len) = len {
+            self.read.read(len)
+        } else {
+            self.read_indefinite_str()
+        }?;
+        match read {
             EitherLifetime::Long(buf) => {
                 let s = Self::convert_str(buf, offset)?;
                 visitor.visit_borrowed_str(s)
@@ -401,8 +480,32 @@ where
         }
     }
 
+    #[cold]
+    fn read_indefinite_str(&mut self) -> Result<EitherLifetime<'_, 'de>> {
+        self.read.clear_buffer();
+        loop {
+            let byte = self.parse_u8()?;
+            let len = match byte {
+                0x60..=0x77 => byte as usize - 0x60,
+                0x78..=0x7b => {
+                    let len = self.parse_uint(byte - 0x77)?;
+                    if len > usize::max_value() as u64 {
+                        return Err(self.error(ErrorCode::LengthOutOfRange));
+                    }
+                    len as usize
+                }
+                0xff => break,
+                _ => return Err(self.error(ErrorCode::UnexpectedCode(ExpectedSet::STRING, byte))),
+            };
+
+            self.read.read_to_buffer(len)?;
+        }
+
+        Ok(self.read.take_buffer())
+    }
+
     #[cfg(feature = "tags")]
-    fn handle_tagged_value<V>(&mut self, tag: u64, visitor: V) -> Result<V::Value>
+    fn handle_tagged_value<V, Valid>(&mut self, tag: u64, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
@@ -415,16 +518,18 @@ where
     }
 
     #[cfg(not(feature = "tags"))]
-    fn handle_tagged_value<V>(&mut self, _tag: u64, visitor: V) -> Result<V::Value>
+    fn handle_tagged_value<V, Valid>(&mut self, _tag: u64, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
+        Valid: ValidValues,
     {
-        self.recursion_checked(|de| de.parse_value(visitor))
+        self.recursion_checked(|de| de.parse_value::<_, Valid>(visitor))
     }
 
+    #[inline]
     fn recursion_checked<F, T>(&mut self, f: F) -> Result<T>
     where
-        F: FnOnce(&mut Deserializer<R>) -> Result<T>,
+        F: FnOnce(&mut Deserializer<R, O>) -> Result<T>,
     {
         self.remaining_depth -= 1;
         if self.remaining_depth == 0 {
@@ -435,91 +540,74 @@ where
         r
     }
 
-    fn parse_array<V>(&mut self, mut len: usize, visitor: V) -> Result<V::Value>
+    fn parse_array<V>(&mut self, mut len: Option<usize>, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
         self.recursion_checked(|de| {
-            let value = visitor.visit_seq(SeqAccess { de, len: &mut len })?;
+            let value = visitor.visit_seq(SeqAccess {
+                de,
+                len: len.as_mut(),
+            })?;
 
-            if len != 0 {
-                Err(de.error(ErrorCode::TrailingData))
-            } else {
-                Ok(value)
+            match len {
+                Some(0) => (),
+                Some(_) => return Err(de.error(ErrorCode::TrailingData)),
+                None => match de.next()? {
+                    Some(0xff) => (),
+                    Some(_) => return Err(de.error(ErrorCode::TrailingData)),
+                    None => return Err(de.error(ErrorCode::EofWhileParsingArray)),
+                },
             }
+            Ok(value)
         })
     }
 
-    fn parse_indefinite_array<V>(&mut self, visitor: V) -> Result<V::Value>
+    fn parse_map<V>(&mut self, mut len: Option<usize>, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        self.recursion_checked(|de| {
-            let value = visitor.visit_seq(IndefiniteSeqAccess { de })?;
-            match de.next()? {
-                Some(0xff) => Ok(value),
-                Some(_) => Err(de.error(ErrorCode::TrailingData)),
-                None => Err(de.error(ErrorCode::EofWhileParsingArray)),
-            }
-        })
-    }
-
-    fn parse_map<V>(&mut self, mut len: usize, visitor: V) -> Result<V::Value>
-    where
-        V: de::Visitor<'de>,
-    {
-        let accept_packed = self.accept_packed;
-        let accept_named = self.accept_named;
         self.recursion_checked(|de| {
             let value = visitor.visit_map(MapAccess {
                 de,
-                len: &mut len,
-                accept_named,
-                accept_packed,
+                len: len.as_mut(),
             })?;
 
-            if len != 0 {
-                Err(de.error(ErrorCode::TrailingData))
-            } else {
-                Ok(value)
+            match len {
+                Some(0) => (),
+                Some(_) => return Err(de.error(ErrorCode::TrailingData)),
+                None => match de.next()? {
+                    Some(0xff) => (),
+                    Some(_) => return Err(de.error(ErrorCode::TrailingData)),
+                    None => return Err(de.error(ErrorCode::EofWhileParsingMap)),
+                },
             }
+            Ok(value)
         })
     }
 
-    fn parse_indefinite_map<V>(&mut self, visitor: V) -> Result<V::Value>
-    where
-        V: de::Visitor<'de>,
-    {
-        let accept_named = self.accept_named;
-        let accept_packed = self.accept_packed;
-        self.recursion_checked(|de| {
-            let value = visitor.visit_map(IndefiniteMapAccess {
-                de,
-                accept_packed,
-                accept_named,
-            })?;
-            match de.next()? {
-                Some(0xff) => Ok(value),
-                Some(_) => Err(de.error(ErrorCode::TrailingData)),
-                None => Err(de.error(ErrorCode::EofWhileParsingMap)),
-            }
-        })
-    }
-
-    fn parse_enum<V>(&mut self, mut len: usize, visitor: V) -> Result<V::Value>
+    fn parse_enum<V>(&mut self, mut len: Option<usize>, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
         self.recursion_checked(|de| {
             let value = visitor.visit_enum(VariantAccess {
-                seq: SeqAccess { de, len: &mut len },
+                seq: SeqAccess {
+                    de,
+                    len: len.as_mut(),
+                },
             })?;
 
-            if len != 0 {
-                Err(de.error(ErrorCode::TrailingData))
-            } else {
-                Ok(value)
+            match len {
+                Some(0) => (),
+                Some(_) => return Err(de.error(ErrorCode::TrailingData)),
+                None => match de.next()? {
+                    Some(0xff) => (),
+                    Some(_) => return Err(de.error(ErrorCode::TrailingData)),
+                    None => return Err(de.error(ErrorCode::EofWhileParsingArray)),
+                },
             }
+            Ok(value)
         })
     }
 
@@ -527,16 +615,12 @@ where
     where
         V: de::Visitor<'de>,
     {
-        let accept_named = self.accept_named;
-        let accept_packed = self.accept_packed;
         self.recursion_checked(|de| {
             let mut len = 1;
             let value = visitor.visit_enum(VariantAccessMap {
                 map: MapAccess {
                     de,
-                    len: &mut len,
-                    accept_packed,
-                    accept_named,
+                    len: Some(&mut len),
                 },
             })?;
 
@@ -548,235 +632,146 @@ where
         })
     }
 
-    fn parse_indefinite_enum<V>(&mut self, visitor: V) -> Result<V::Value>
-    where
-        V: de::Visitor<'de>,
-    {
-        self.recursion_checked(|de| {
-            let value = visitor.visit_enum(VariantAccess {
-                seq: IndefiniteSeqAccess { de },
-            })?;
-            match de.next()? {
-                Some(0xff) => Ok(value),
-                Some(_) => Err(de.error(ErrorCode::TrailingData)),
-                None => Err(de.error(ErrorCode::EofWhileParsingArray)),
-            }
+    #[inline]
+    fn parse_float(&mut self, magnitude: u8) -> Result<f64> {
+        let mut buf = [0; 8];
+        let bytes = 1 << (magnitude - 1);
+        self.read.read_into(&mut buf[..bytes])?;
+        Ok(match magnitude {
+            2 => f16::from_be_bytes(buf[..2].try_into().unwrap()).to_f64(),
+            3 => f32::from_be_bytes(buf[..4].try_into().unwrap()) as f64,
+            4 => f64::from_be_bytes(buf[..8].try_into().unwrap()),
+            _ => unreachable!(),
         })
-    }
-
-    fn parse_f16(&mut self) -> Result<f32> {
-        Ok(f32::from(f16::from_bits(self.parse_u16()?)))
-    }
-
-    fn parse_f32(&mut self) -> Result<f32> {
-        self.parse_u32().map(|i| f32::from_bits(i))
-    }
-
-    fn parse_f64(&mut self) -> Result<f64> {
-        self.parse_u64().map(|i| f64::from_bits(i))
     }
 
     // Don't warn about the `unreachable!` in case
     // exhaustive integer pattern matching is enabled.
     #[allow(unreachable_patterns)]
-    fn parse_value<V>(&mut self, visitor: V) -> Result<V::Value>
+    fn parse_value<V, Valid>(&mut self, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
+        Valid: ValidValues,
     {
         let byte = self.parse_u8()?;
         match byte {
             // Major type 0: an unsigned integer
-            0x00..=0x17 => visitor.visit_u8(byte),
-            0x18 => {
-                let value = self.parse_u8()?;
-                visitor.visit_u8(value)
-            }
-            0x19 => {
-                let value = self.parse_u16()?;
-                visitor.visit_u16(value)
-            }
-            0x1a => {
-                let value = self.parse_u32()?;
-                visitor.visit_u32(value)
-            }
-            0x1b => {
-                let value = self.parse_u64()?;
+            0x00..=0x1b if Valid::INT_POS => {
+                let value = if byte <= 0x17 {
+                    byte as u64
+                } else {
+                    self.parse_uint(byte - 0x17)?
+                };
                 visitor.visit_u64(value)
             }
-            0x1c..=0x1f => Err(self.error(ErrorCode::UnassignedCode)),
 
             // Major type 1: a negative integer
-            0x20..=0x37 => visitor.visit_i8(-1 - (byte - 0x20) as i8),
-            0x38 => {
-                let value = self.parse_u8()?;
-                visitor.visit_i16(-1 - i16::from(value))
+            0x20..=0x3b if Valid::INT_NEG => {
+                let u_value = if byte <= 0x37 {
+                    (byte - 0x20) as u64
+                } else {
+                    let u_value = self.parse_uint(byte - 0x37)?;
+                    if u_value > i64::max_value() as u64 {
+                        return visitor.visit_i128(-1 - i128::from(u_value));
+                    }
+                    u_value
+                };
+                visitor.visit_i64(-1 - u_value as i64)
             }
-            0x39 => {
-                let value = self.parse_u16()?;
-                visitor.visit_i32(-1 - i32::from(value))
-            }
-            0x3a => {
-                let value = self.parse_u32()?;
-                visitor.visit_i64(-1 - i64::from(value))
-            }
-            0x3b => {
-                let value = self.parse_u64()?;
-                if value > i64::max_value() as u64 {
-                    return visitor.visit_i128(-1 - i128::from(value));
-                }
-                visitor.visit_i64(-1 - value as i64)
-            }
-            0x3c..=0x3f => Err(self.error(ErrorCode::UnassignedCode)),
 
             // Major type 2: a byte string
-            0x40..=0x57 => self.parse_bytes(byte as usize - 0x40, visitor),
-            0x58 => {
-                let len = self.parse_u8()?;
-                self.parse_bytes(len as usize, visitor)
+            0x40..=0x5b | 0x5f if Valid::BYTES => {
+                let len = if byte == 0x5f {
+                    None
+                } else if byte <= 0x57 {
+                    Some(byte as usize - 0x40)
+                } else {
+                    let len = self.parse_uint(byte - 0x57)?;
+                    if len > usize::max_value() as u64 {
+                        return Err(self.error(ErrorCode::LengthOutOfRange));
+                    }
+                    Some(len as usize)
+                };
+                self.parse_bytes(len, visitor)
             }
-            0x59 => {
-                let len = self.parse_u16()?;
-                self.parse_bytes(len as usize, visitor)
-            }
-            0x5a => {
-                let len = self.parse_u32()?;
-                self.parse_bytes(len as usize, visitor)
-            }
-            0x5b => {
-                let len = self.parse_u64()?;
-                if len > usize::max_value() as u64 {
-                    return Err(self.error(ErrorCode::LengthOutOfRange));
-                }
-                self.parse_bytes(len as usize, visitor)
-            }
-            0x5c..=0x5e => Err(self.error(ErrorCode::UnassignedCode)),
-            0x5f => self.parse_indefinite_bytes(visitor),
 
             // Major type 3: a text string
-            0x60..=0x77 => self.parse_str(byte as usize - 0x60, visitor),
-            0x78 => {
-                let len = self.parse_u8()?;
-                self.parse_str(len as usize, visitor)
+            0x60..=0x7b | 0x7f if Valid::STRING => {
+                let len = if byte == 0x7f {
+                    None
+                } else if byte <= 0x77 {
+                    Some(byte as usize - 0x60)
+                } else {
+                    let len = self.parse_uint(byte - 0x77)?;
+                    if len > usize::max_value() as u64 {
+                        return Err(self.error(ErrorCode::LengthOutOfRange));
+                    }
+                    Some(len as usize)
+                };
+                self.parse_str(len, visitor)
             }
-            0x79 => {
-                let len = self.parse_u16()?;
-                self.parse_str(len as usize, visitor)
-            }
-            0x7a => {
-                let len = self.parse_u32()?;
-                self.parse_str(len as usize, visitor)
-            }
-            0x7b => {
-                let len = self.parse_u64()?;
-                if len > usize::max_value() as u64 {
-                    return Err(self.error(ErrorCode::LengthOutOfRange));
-                }
-                self.parse_str(len as usize, visitor)
-            }
-            0x7c..=0x7e => Err(self.error(ErrorCode::UnassignedCode)),
-            0x7f => self.parse_indefinite_str(visitor),
 
             // Major type 4: an array of data items
-            0x80..=0x97 => self.parse_array(byte as usize - 0x80, visitor),
-            0x98 => {
-                let len = self.parse_u8()?;
-                self.parse_array(len as usize, visitor)
+            0x80..=0x9b | 0x9f if Valid::ARRAY => {
+                let len = if byte == 0x9f {
+                    None
+                } else if byte <= 0x97 {
+                    Some(byte as usize - 0x80)
+                } else {
+                    let len = self.parse_uint(byte - 0x97)?;
+                    if len > usize::max_value() as u64 {
+                        return Err(self.error(ErrorCode::LengthOutOfRange));
+                    }
+                    Some(len as usize)
+                };
+                self.parse_array(len, visitor)
             }
-            0x99 => {
-                let len = self.parse_u16()?;
-                self.parse_array(len as usize, visitor)
-            }
-            0x9a => {
-                let len = self.parse_u32()?;
-                self.parse_array(len as usize, visitor)
-            }
-            0x9b => {
-                let len = self.parse_u64()?;
-                if len > usize::max_value() as u64 {
-                    return Err(self.error(ErrorCode::LengthOutOfRange));
-                }
-                self.parse_array(len as usize, visitor)
-            }
-            0x9c..=0x9e => Err(self.error(ErrorCode::UnassignedCode)),
-            0x9f => self.parse_indefinite_array(visitor),
 
             // Major type 5: a map of pairs of data items
-            0xa0..=0xb7 => self.parse_map(byte as usize - 0xa0, visitor),
-            0xb8 => {
-                let len = self.parse_u8()?;
-                self.parse_map(len as usize, visitor)
+            0xa0..=0xbb | 0xbf if Valid::MAP => {
+                let len = if byte == 0xbf {
+                    None
+                } else if byte <= 0xb7 {
+                    Some(byte as usize - 0xa0)
+                } else {
+                    let len = self.parse_uint(byte - 0xb7)?;
+                    if len > usize::max_value() as u64 {
+                        return Err(self.error(ErrorCode::LengthOutOfRange));
+                    }
+                    Some(len as usize)
+                };
+                self.parse_map(len, visitor)
             }
-            0xb9 => {
-                let len = self.parse_u16()?;
-                self.parse_map(len as usize, visitor)
-            }
-            0xba => {
-                let len = self.parse_u32()?;
-                self.parse_map(len as usize, visitor)
-            }
-            0xbb => {
-                let len = self.parse_u64()?;
-                if len > usize::max_value() as u64 {
-                    return Err(self.error(ErrorCode::LengthOutOfRange));
-                }
-                self.parse_map(len as usize, visitor)
-            }
-            0xbc..=0xbe => Err(self.error(ErrorCode::UnassignedCode)),
-            0xbf => self.parse_indefinite_map(visitor),
 
             // Major type 6: optional semantic tagging of other major types
-            0xc0..=0xd7 => {
-                let tag = u64::from(byte) - 0xc0;
-                self.handle_tagged_value(tag, visitor)
+            0xc0..=0xdb => {
+                let tag = if byte <= 0xd7 {
+                    byte as u64 - 0xc0
+                } else {
+                    self.parse_uint(byte - 0xd7)?
+                };
+                self.handle_tagged_value::<_, Valid>(tag, visitor)
             }
-            0xd8 => {
-                let tag = self.parse_u8()?;
-                self.handle_tagged_value(tag.into(), visitor)
-            }
-            0xd9 => {
-                let tag = self.parse_u16()?;
-                self.handle_tagged_value(tag.into(), visitor)
-            }
-            0xda => {
-                let tag = self.parse_u32()?;
-                self.handle_tagged_value(tag.into(), visitor)
-            }
-            0xdb => {
-                let tag = self.parse_u64()?;
-                self.handle_tagged_value(tag, visitor)
-            }
-            0xdc..=0xdf => Err(self.error(ErrorCode::UnassignedCode)),
 
             // Major type 7: floating-point numbers and other simple data types that need no content
-            0xe0..=0xf3 => Err(self.error(ErrorCode::UnassignedCode)),
-            0xf4 => visitor.visit_bool(false),
-            0xf5 => visitor.visit_bool(true),
-            0xf6 => visitor.visit_unit(),
-            0xf7 => visitor.visit_unit(),
-            0xf8 => Err(self.error(ErrorCode::UnassignedCode)),
-            0xf9 => {
-                let value = self.parse_f16()?;
-                visitor.visit_f32(value)
-            }
-            0xfa => {
-                let value = self.parse_f32()?;
-                visitor.visit_f32(value)
-            }
-            0xfb => {
-                let value = self.parse_f64()?;
+            0xf4..=0xf5 if Valid::BOOL => visitor.visit_bool(byte == 0xf5),
+            0xf6..=0xf7 if Valid::NULL => visitor.visit_unit(),
+            0xf9..=0xfb if Valid::FLOAT => {
+                let value = self.parse_float(byte - 0xf9 + 2)?;
                 visitor.visit_f64(value)
             }
-            0xfc..=0xfe => Err(self.error(ErrorCode::UnassignedCode)),
-            0xff => Err(self.error(ErrorCode::UnexpectedCode)),
-
-            _ => unreachable!(),
+            _ => Err(self.error(ErrorCode::UnexpectedCode(
+                ExpectedSet::from_valid::<Valid>(),
+                byte,
+            ))),
         }
     }
 }
 
-impl<'de, 'a, R> de::Deserializer<'de> for &'a mut Deserializer<R>
+impl<'de, 'a, R, O> de::Deserializer<'de> for &'a mut Deserializer<R, O>
 where
     R: Read<'de>,
+    O: DeserializerOptions,
 {
     type Error = Error;
 
@@ -785,7 +780,7 @@ where
     where
         V: de::Visitor<'de>,
     {
-        self.parse_value(visitor)
+        self.parse_value::<_, ValidAll>(visitor)
     }
 
     #[inline]
@@ -824,40 +819,31 @@ where
         V: de::Visitor<'de>,
     {
         match self.peek()? {
-            Some(byte @ 0x80..=0x9f) => {
-                if !self.accept_legacy_enums {
+            Some(byte @ 0x80..=0x9b | byte @ 0x9f) => {
+                if !self.options.accept_legacy_enums() {
                     return Err(self.error(ErrorCode::WrongEnumFormat));
                 }
                 self.consume();
                 match byte {
-                    0x80..=0x97 => self.parse_enum(byte as usize - 0x80, visitor),
-                    0x98 => {
-                        let len = self.parse_u8()?;
-                        self.parse_enum(len as usize, visitor)
+                    0x80..=0x9b | 0x9f => {
+                        let len = if byte == 0x9f {
+                            None
+                        } else if byte <= 0x97 {
+                            Some(byte as usize - 0x80)
+                        } else {
+                            let len = self.parse_uint(byte - 0x97)?;
+                            if len > usize::max_value() as u64 {
+                                return Err(self.error(ErrorCode::LengthOutOfRange));
+                            }
+                            Some(len as usize)
+                        };
+                        self.parse_enum(len, visitor)
                     }
-                    0x99 => {
-                        let len = self.parse_u16()?;
-                        self.parse_enum(len as usize, visitor)
-                    }
-                    0x9a => {
-                        let len = self.parse_u32()?;
-                        self.parse_enum(len as usize, visitor)
-                    }
-                    0x9b => {
-                        let len = self.parse_u64()?;
-                        if len > usize::max_value() as u64 {
-                            return Err(self.error(ErrorCode::LengthOutOfRange));
-                        }
-                        self.parse_enum(len as usize, visitor)
-                    }
-                    0x9c..=0x9e => Err(self.error(ErrorCode::UnassignedCode)),
-                    0x9f => self.parse_indefinite_enum(visitor),
-
                     _ => unreachable!(),
                 }
             }
             Some(0xa1) => {
-                if !self.accept_standard_enums {
+                if !self.options.accept_standard_enums() {
                     return Err(self.error(ErrorCode::WrongEnumFormat));
                 }
                 self.consume();
@@ -865,7 +851,7 @@ where
             }
             None => Err(self.error(ErrorCode::EofWhileParsingValue)),
             _ => {
-                if !self.accept_standard_enums && !self.accept_legacy_enums {
+                if !self.options.accept_standard_enums() && !self.options.accept_legacy_enums() {
                     return Err(self.error(ErrorCode::WrongEnumFormat));
                 }
                 visitor.visit_enum(UnitVariantAccess { de: self })
@@ -878,16 +864,214 @@ where
         false
     }
 
-    serde::forward_to_deserialize_any! {
-        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string unit
-        unit_struct seq tuple tuple_struct map struct identifier ignored_any
-        bytes byte_buf
+    fn deserialize_bool<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.parse_value::<_, ValidForBool>(visitor)
+    }
+
+    fn deserialize_i8<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.deserialize_i64(visitor)
+    }
+
+    fn deserialize_i16<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.deserialize_i64(visitor)
+    }
+
+    fn deserialize_i32<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.deserialize_i64(visitor)
+    }
+
+    fn deserialize_i64<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.parse_value::<_, ValidForSInt>(visitor)
+    }
+
+    fn deserialize_u8<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.deserialize_u64(visitor)
+    }
+
+    fn deserialize_u16<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.deserialize_u64(visitor)
+    }
+
+    fn deserialize_u32<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.deserialize_u64(visitor)
+    }
+
+    fn deserialize_u64<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.parse_value::<_, ValidForUInt>(visitor)
+    }
+
+    fn deserialize_str<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.parse_value::<_, ValidForString>(visitor)
+    }
+
+    fn deserialize_string<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.deserialize_str(visitor)
+    }
+
+    fn deserialize_map<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.parse_value::<_, ValidForMap>(visitor)
+    }
+
+    fn deserialize_struct<V>(
+        self,
+        _name: &'static str,
+        _fields: &'static [&'static str],
+        visitor: V,
+    ) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.deserialize_map(visitor)
+    }
+
+    fn deserialize_identifier<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.parse_value::<_, ValidForStringAndUInt>(visitor)
+    }
+
+    fn deserialize_byte_buf<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.deserialize_bytes(visitor)
+    }
+
+    fn deserialize_bytes<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.parse_value::<_, ValidForBytes>(visitor)
+    }
+
+    fn deserialize_seq<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.parse_value::<_, ValidForSeq>(visitor)
+    }
+
+    fn deserialize_char<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.deserialize_str(visitor)
+    }
+
+    fn deserialize_f32<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.deserialize_f64(visitor)
+    }
+
+    fn deserialize_f64<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.parse_value::<_, ValidForFloat>(visitor)
+    }
+
+    fn deserialize_unit<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.parse_value::<_, ValidForUnit>(visitor)
+    }
+
+    fn deserialize_unit_struct<V>(
+        self,
+        _name: &'static str,
+        visitor: V,
+    ) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.deserialize_unit(visitor)
+    }
+
+    fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.deserialize_seq(visitor)
+    }
+
+    fn deserialize_tuple_struct<V>(
+        self,
+        _name: &'static str,
+        len: usize,
+        visitor: V,
+    ) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.deserialize_tuple(len, visitor)
+    }
+
+    fn deserialize_ignored_any<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.parse_value::<_, ValidAll>(visitor)
+    }
+
+    fn deserialize_i128<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.deserialize_i64(visitor)
+    }
+
+    fn deserialize_u128<V>(self, visitor: V) -> result::Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.deserialize_u64(visitor)
     }
 }
 
-impl<R> Deserializer<R>
+impl<R, O> Deserializer<R, O>
 where
     R: Offset,
+    O: DeserializerOptions,
 {
     /// Return the current offset in the reader
     #[inline]
@@ -900,14 +1084,15 @@ trait MakeError {
     fn error(&self, code: ErrorCode) -> Error;
 }
 
-struct SeqAccess<'a, R> {
-    de: &'a mut Deserializer<R>,
-    len: &'a mut usize,
+struct SeqAccess<'a, R, O> {
+    de: &'a mut Deserializer<R, O>,
+    len: Option<&'a mut usize>,
 }
 
-impl<'de, 'a, R> de::SeqAccess<'de> for SeqAccess<'a, R>
+impl<'de, 'a, R, O> de::SeqAccess<'de> for SeqAccess<'a, R, O>
 where
     R: Read<'de>,
+    O: DeserializerOptions,
 {
     type Error = Error;
 
@@ -915,73 +1100,47 @@ where
     where
         T: de::DeserializeSeed<'de>,
     {
-        if *self.len == 0 {
-            return Ok(None);
+        if let Some(len) = &mut self.len {
+            if **len == 0 {
+                return Ok(None);
+            }
+            **len -= 1;
+        } else {
+            match self.de.peek()? {
+                Some(0xff) => return Ok(None),
+                Some(_) => (),
+                None => return Err(self.de.error(ErrorCode::EofWhileParsingArray)),
+            }
         }
-        *self.len -= 1;
 
         let value = seed.deserialize(&mut *self.de)?;
         Ok(Some(value))
     }
 
     fn size_hint(&self) -> Option<usize> {
-        Some(*self.len)
+        self.len.as_ref().map(|l| **l)
     }
 }
 
-impl<'de, 'a, R> MakeError for SeqAccess<'a, R>
+impl<'de, 'a, R, O> MakeError for SeqAccess<'a, R, O>
 where
     R: Read<'de>,
+    O: DeserializerOptions,
 {
     fn error(&self, code: ErrorCode) -> Error {
         self.de.error(code)
     }
 }
 
-struct IndefiniteSeqAccess<'a, R> {
-    de: &'a mut Deserializer<R>,
+struct MapAccess<'a, R, O> {
+    de: &'a mut Deserializer<R, O>,
+    len: Option<&'a mut usize>,
 }
 
-impl<'de, 'a, R> de::SeqAccess<'de> for IndefiniteSeqAccess<'a, R>
+impl<'de, 'a, R, O> de::MapAccess<'de> for MapAccess<'a, R, O>
 where
     R: Read<'de>,
-{
-    type Error = Error;
-
-    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
-    where
-        T: de::DeserializeSeed<'de>,
-    {
-        match self.de.peek()? {
-            Some(0xff) => return Ok(None),
-            Some(_) => {}
-            None => return Err(self.de.error(ErrorCode::EofWhileParsingArray)),
-        }
-
-        let value = seed.deserialize(&mut *self.de)?;
-        Ok(Some(value))
-    }
-}
-
-impl<'de, 'a, R> MakeError for IndefiniteSeqAccess<'a, R>
-where
-    R: Read<'de>,
-{
-    fn error(&self, code: ErrorCode) -> Error {
-        self.de.error(code)
-    }
-}
-
-struct MapAccess<'a, R> {
-    de: &'a mut Deserializer<R>,
-    len: &'a mut usize,
-    accept_named: bool,
-    accept_packed: bool,
-}
-
-impl<'de, 'a, R> de::MapAccess<'de> for MapAccess<'a, R>
-where
-    R: Read<'de>,
+    O: DeserializerOptions,
 {
     type Error = Error;
 
@@ -989,20 +1148,33 @@ where
     where
         K: de::DeserializeSeed<'de>,
     {
-        if *self.len == 0 {
-            return Ok(None);
+        if let Some(len) = &mut self.len {
+            if **len == 0 {
+                return Ok(None);
+            }
+            **len -= 1;
+        } else {
+            match self.de.peek()? {
+                Some(0xff) => return Ok(None),
+                Some(_) => (),
+                None => return Err(self.de.error(ErrorCode::EofWhileParsingMap)),
+            }
         }
-        *self.len -= 1;
 
-        match self.de.peek()? {
-            Some(_byte @ 0x00..=0x1b) if !self.accept_packed => {
-                return Err(self.de.error(ErrorCode::WrongStructFormat));
-            }
-            Some(_byte @ 0x60..=0x7f) if !self.accept_named => {
-                return Err(self.de.error(ErrorCode::WrongStructFormat));
-            }
-            _ => {}
-        };
+        // TODO: the accept_packed check is broken here. If `accept packed` is `false`
+        // the map deserializer will refuse integer keys (which are valid in cbor),
+        // erroring with WrongStructFormat.
+        if !self.de.options.accept_named() || !self.de.options.accept_packed() {
+            match self.de.peek()? {
+                Some(_byte @ 0x00..=0x1b) if !self.de.options.accept_packed() => {
+                    return Err(self.de.error(ErrorCode::WrongStructFormat));
+                }
+                Some(_byte @ 0x60..=0x7f) if !self.de.options.accept_named() => {
+                    return Err(self.de.error(ErrorCode::WrongStructFormat));
+                }
+                _ => {}
+            };
+        }
 
         let value = seed.deserialize(&mut *self.de)?;
         Ok(Some(value))
@@ -1016,71 +1188,33 @@ where
     }
 
     fn size_hint(&self) -> Option<usize> {
-        Some(*self.len)
+        self.len.as_ref().map(|l| **l)
     }
 }
 
-impl<'de, 'a, R> MakeError for MapAccess<'a, R>
+impl<'de, 'a, R, O> MakeError for MapAccess<'a, R, O>
 where
     R: Read<'de>,
+    O: DeserializerOptions,
 {
     fn error(&self, code: ErrorCode) -> Error {
         self.de.error(code)
     }
 }
 
-struct IndefiniteMapAccess<'a, R> {
-    de: &'a mut Deserializer<R>,
-    accept_packed: bool,
-    accept_named: bool,
+struct UnitVariantAccess<'a, R, O> {
+    de: &'a mut Deserializer<R, O>,
 }
 
-impl<'de, 'a, R> de::MapAccess<'de> for IndefiniteMapAccess<'a, R>
+impl<'de, 'a, R, O> de::EnumAccess<'de> for UnitVariantAccess<'a, R, O>
 where
     R: Read<'de>,
+    O: DeserializerOptions,
 {
     type Error = Error;
+    type Variant = UnitVariantAccess<'a, R, O>;
 
-    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
-    where
-        K: de::DeserializeSeed<'de>,
-    {
-        match self.de.peek()? {
-            Some(_byte @ 0x00..=0x1b) if !self.accept_packed => {
-                return Err(self.de.error(ErrorCode::WrongStructFormat))
-            }
-            Some(_byte @ 0x60..=0x7f) if !self.accept_named => {
-                return Err(self.de.error(ErrorCode::WrongStructFormat))
-            }
-            Some(0xff) => return Ok(None),
-            Some(_) => {}
-            None => return Err(self.de.error(ErrorCode::EofWhileParsingMap)),
-        }
-
-        let value = seed.deserialize(&mut *self.de)?;
-        Ok(Some(value))
-    }
-
-    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
-    where
-        V: de::DeserializeSeed<'de>,
-    {
-        seed.deserialize(&mut *self.de)
-    }
-}
-
-struct UnitVariantAccess<'a, R> {
-    de: &'a mut Deserializer<R>,
-}
-
-impl<'de, 'a, R> de::EnumAccess<'de> for UnitVariantAccess<'a, R>
-where
-    R: Read<'de>,
-{
-    type Error = Error;
-    type Variant = UnitVariantAccess<'a, R>;
-
-    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, UnitVariantAccess<'a, R>)>
+    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, UnitVariantAccess<'a, R, O>)>
     where
         V: de::DeserializeSeed<'de>,
     {
@@ -1089,9 +1223,10 @@ where
     }
 }
 
-impl<'de, 'a, R> de::VariantAccess<'de> for UnitVariantAccess<'a, R>
+impl<'de, 'a, R, O> de::VariantAccess<'de> for UnitVariantAccess<'a, R, O>
 where
     R: Read<'de>,
+    O: DeserializerOptions,
 {
     type Error = Error;
 
@@ -1243,8 +1378,8 @@ where
 /// # }
 /// ```
 #[derive(Debug)]
-pub struct StreamDeserializer<'de, R, T> {
-    de: Deserializer<R>,
+pub struct StreamDeserializer<'de, R, T, O = DefaultDeserializerOptions> {
+    de: Deserializer<R, O>,
     output: PhantomData<T>,
     lifetime: PhantomData<&'de ()>,
 }
@@ -1270,10 +1405,11 @@ where
     }
 }
 
-impl<'de, R, T> StreamDeserializer<'de, R, T>
+impl<'de, R, T, O> StreamDeserializer<'de, R, T, O>
 where
     R: Offset,
     T: de::Deserialize<'de>,
+    O: DeserializerOptions,
 {
     /// Return the current offset in the reader
     #[inline]
@@ -1282,10 +1418,11 @@ where
     }
 }
 
-impl<'de, R, T> Iterator for StreamDeserializer<'de, R, T>
+impl<'de, R, T, O> Iterator for StreamDeserializer<'de, R, T, O>
 where
     R: Read<'de>,
     T: de::Deserialize<'de>,
+    O: DeserializerOptions,
 {
     type Item = Result<T>;
 
@@ -1357,4 +1494,76 @@ where
         let seed = StructVariantSeed { visitor };
         self.map.next_value_seed(seed)
     }
+}
+
+/// Customizes what `parse_value` will accept and generate code for
+pub(crate) trait ValidValues {
+    const STRING: bool = false;
+    const BYTES: bool = false;
+    const INT_POS: bool = false;
+    const INT_NEG: bool = false;
+    const FLOAT: bool = false;
+    const ARRAY: bool = false;
+    const MAP: bool = false;
+    const BOOL: bool = false;
+    const NULL: bool = false;
+}
+struct ValidAll;
+impl ValidValues for ValidAll {
+    const STRING: bool = true;
+    const BYTES: bool = true;
+    const INT_POS: bool = true;
+    const INT_NEG: bool = true;
+    const FLOAT: bool = true;
+    const ARRAY: bool = true;
+    const MAP: bool = true;
+    const BOOL: bool = true;
+    const NULL: bool = true;
+}
+struct ValidForString;
+impl ValidValues for ValidForString {
+    const STRING: bool = true;
+    const BYTES: bool = true;
+}
+struct ValidForStringAndUInt;
+impl ValidValues for ValidForStringAndUInt {
+    const STRING: bool = true;
+    const INT_POS: bool = true;
+}
+struct ValidForBytes;
+impl ValidValues for ValidForBytes {
+    const ARRAY: bool = true;
+    const STRING: bool = true;
+    const BYTES: bool = true;
+}
+struct ValidForSInt;
+impl ValidValues for ValidForSInt {
+    const INT_POS: bool = true;
+    const INT_NEG: bool = true;
+}
+struct ValidForUInt;
+impl ValidValues for ValidForUInt {
+    const INT_POS: bool = true;
+}
+struct ValidForFloat;
+impl ValidValues for ValidForFloat {
+    const INT_POS: bool = true;
+    const INT_NEG: bool = true;
+    const FLOAT: bool = true;
+}
+struct ValidForSeq;
+impl ValidValues for ValidForSeq {
+    const ARRAY: bool = true;
+}
+struct ValidForMap;
+impl ValidValues for ValidForMap {
+    const MAP: bool = true;
+}
+struct ValidForBool;
+impl ValidValues for ValidForBool {
+    const BOOL: bool = true;
+}
+struct ValidForUnit;
+impl ValidValues for ValidForUnit {
+    const NULL: bool = true;
 }

@@ -32,8 +32,13 @@ pub fn to_vec_packed<T>(value: &T) -> Result<Vec<u8>>
 where
     T: ser::Serialize,
 {
+    let options = CustomSerializerOptions {
+        packed: true,
+        enum_as_map: true,
+    };
     let mut vec = Vec::new();
-    value.serialize(&mut Serializer::new(&mut IoWrite::new(&mut vec)).packed_format())?;
+    let mut serializer = Serializer::new_with_options(&mut vec, options);
+    value.serialize(&mut serializer)?;
     Ok(vec)
 }
 
@@ -47,37 +52,15 @@ where
     value.serialize(&mut Serializer::new(&mut IoWrite::new(writer)))
 }
 
-/// A structure for serializing Rust values to CBOR.
-#[derive(Debug)]
-pub struct Serializer<W> {
-    writer: W,
-    packed: bool,
-    enum_as_map: bool,
-}
-
-impl<W> Serializer<W>
-where
-    W: Write,
-{
-    /// Creates a new CBOR serializer.
-    ///
-    /// `to_vec` and `to_writer` should normally be used instead of this method.
-    #[inline]
-    pub fn new(writer: W) -> Self {
-        Serializer {
-            writer,
-            packed: false,
-            enum_as_map: true,
-        }
-    }
-
+/// Serializer options
+pub trait SerializerOptions {
     /// Choose concise/packed format for serializer.
     ///
     /// In the packed format enum variant names and field names
     /// are replaced with numeric indizes to conserve space.
-    pub fn packed_format(mut self) -> Self {
-        self.packed = true;
-        self
+    #[inline]
+    fn packed(&self) -> bool {
+        false
     }
 
     /// Enable old enum format used by `serde_cbor` versions <= v0.9.
@@ -115,9 +98,155 @@ where
     /// * `Enum::NewType(10)` encodes as `["NewType", 10]`
     /// * `Enum::Tuple("x", true)` encodes as `["Tuple", "x", true]`
     /// * `Enum::Struct{ x: 5, y: -5 }` encodes as `["Struct", {"x": 5, "y": -5}]`
-    pub fn legacy_enums(mut self) -> Self {
-        self.enum_as_map = false;
+    #[inline]
+    fn enum_as_map(&self) -> bool {
+        true
+    }
+
+    #[allow(missing_docs)]
+    #[inline]
+    fn to_custom(&self) -> CustomSerializerOptions {
+        CustomSerializerOptions {
+            enum_as_map: self.enum_as_map(),
+            packed: self.packed(),
+        }
+    }
+}
+
+/// Default serializer options
+pub struct DefaultSerializerOptions;
+
+impl SerializerOptions for DefaultSerializerOptions {}
+
+/// Custom serializer options
+pub struct CustomSerializerOptions {
+    packed: bool,
+    enum_as_map: bool,
+}
+
+#[allow(missing_docs)]
+impl CustomSerializerOptions {
+    #[inline]
+    pub fn new() -> Self {
+        DefaultSerializerOptions.to_custom()
+    }
+
+    #[inline]
+    pub fn set_packed(mut self, new: bool) -> Self {
+        self.packed = new;
         self
+    }
+
+    #[inline]
+    pub fn set_enum_as_map(mut self, new: bool) -> Self {
+        self.enum_as_map = new;
+        self
+    }
+}
+
+impl SerializerOptions for CustomSerializerOptions {
+    #[inline]
+    fn packed(&self) -> bool {
+        self.packed
+    }
+    #[inline]
+    fn enum_as_map(&self) -> bool {
+        self.enum_as_map
+    }
+}
+
+impl Default for CustomSerializerOptions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// A structure for serializing Rust values to CBOR.
+#[derive(Debug)]
+pub struct Serializer<W, O = DefaultSerializerOptions> {
+    writer: W,
+    options: O,
+}
+
+impl<W> Serializer<W>
+where
+    W: Write,
+{
+    /// Creates a new CBOR serializer.
+    ///
+    /// `to_vec` and `to_writer` should normally be used instead of this method.
+    #[inline]
+    pub fn new(writer: W) -> Self {
+        Serializer::new_with_options(writer, DefaultSerializerOptions)
+    }
+}
+
+impl<W, O> Serializer<W, O>
+where
+    W: Write,
+    O: SerializerOptions,
+{
+    /// Creates a new CBOR serializer.
+    ///
+    /// `to_vec` and `to_writer` should normally be used instead of this method.
+    #[inline]
+    pub fn new_with_options(writer: W, options: O) -> Self {
+        Serializer { writer, options }
+    }
+
+    /// Choose concise/packed format for serializer.
+    ///
+    /// In the packed format enum variant names and field names
+    /// are replaced with numeric indizes to conserve space.
+    #[inline]
+    pub fn packed_format(self) -> Serializer<W, CustomSerializerOptions> {
+        Serializer {
+            writer: self.writer,
+            options: self.options.to_custom().set_packed(true),
+        }
+    }
+
+    /// Enable old enum format used by `serde_cbor` versions <= v0.9.
+    ///
+    /// The `legacy_enums` option determines how enums are encoded.
+    ///
+    /// This makes no difference when encoding and decoding enums using
+    /// this crate, but it shows up when decoding to a `Value` or decoding
+    /// in other languages.
+    ///
+    /// # Examples
+    ///
+    /// Given the following enum
+    ///
+    /// ```rust
+    /// enum Enum {
+    ///     Unit,
+    ///     NewType(i32),
+    ///     Tuple(String, bool),
+    ///     Struct{ x: i32, y: i32 },
+    /// }
+    /// ```
+    /// we will give the `Value` with the same encoding for each case using
+    /// JSON notation.
+    ///
+    /// ## Default encodings
+    ///
+    /// * `Enum::Unit` encodes as `"Unit"`
+    /// * `Enum::NewType(10)` encodes as `{"NewType": 10}`
+    /// * `Enum::Tuple("x", true)` encodes as `{"Tuple": ["x", true]}`
+    ///
+    /// ## Legacy encodings
+    ///
+    /// * `Enum::Unit` encodes as `"Unit"`
+    /// * `Enum::NewType(10)` encodes as `["NewType", 10]`
+    /// * `Enum::Tuple("x", true)` encodes as `["Tuple", "x", true]`
+    /// * `Enum::Struct{ x: 5, y: -5 }` encodes as `["Struct", {"x": 5, "y": -5}]`
+    #[inline]
+    pub fn legacy_enums(self) -> Serializer<W, CustomSerializerOptions> {
+        Serializer {
+            writer: self.writer,
+            options: self.options.to_custom().set_enum_as_map(false),
+        }
     }
 
     /// Writes a CBOR self-describe tag to the stream.
@@ -138,47 +267,31 @@ where
     }
 
     #[inline]
-    fn write_u8(&mut self, major: u8, value: u8) -> Result<()> {
-        if value <= 0x17 {
-            self.writer.write_all(&[major << 5 | value])
-        } else {
-            let buf = [major << 5 | 24, value];
-            self.writer.write_all(&buf)
-        }
-        .map_err(|e| e.into())
-    }
-
-    #[inline]
-    fn write_u16(&mut self, major: u8, value: u16) -> Result<()> {
-        if value <= u16::from(u8::max_value()) {
-            self.write_u8(major, value as u8)
-        } else {
-            let mut buf = [major << 5 | 25, 0, 0];
-            (&mut buf[1..]).copy_from_slice(&value.to_be_bytes());
-            self.writer.write_all(&buf).map_err(|e| e.into())
-        }
-    }
-
-    #[inline]
-    fn write_u32(&mut self, major: u8, value: u32) -> Result<()> {
-        if value <= u32::from(u16::max_value()) {
-            self.write_u16(major, value as u16)
-        } else {
-            let mut buf = [major << 5 | 26, 0, 0, 0, 0];
-            (&mut buf[1..]).copy_from_slice(&value.to_be_bytes());
-            self.writer.write_all(&buf).map_err(|e| e.into())
-        }
-    }
-
-    #[inline]
     fn write_u64(&mut self, major: u8, value: u64) -> Result<()> {
-        if value <= u64::from(u32::max_value()) {
-            self.write_u32(major, value as u32)
+        let mut buf = [major << 5, 0, 0, 0, 0, 0, 0, 0, 0];
+        let buf_view = if value <= 0x17 {
+            buf[0] |= value as u8;
+            &buf[..1]
         } else {
-            let mut buf = [major << 5 | 27, 0, 0, 0, 0, 0, 0, 0, 0];
-            (&mut buf[1..]).copy_from_slice(&value.to_be_bytes());
-            self.writer.write_all(&buf).map_err(|e| e.into())
-        }
+            if value <= u8::MAX as u64 {
+                buf[0] |= 24;
+                buf[1] = value as u8;
+                &buf[..2]
+            } else if value <= u16::MAX as u64 {
+                buf[0] |= 25;
+                (&mut buf[1..3]).copy_from_slice(&(value as u16).to_be_bytes());
+                &buf[..3]
+            } else if value <= u32::MAX as u64 {
+                buf[0] |= 26;
+                (&mut buf[1..5]).copy_from_slice(&(value as u32).to_be_bytes());
+                &buf[..5]
+            } else {
+                buf[0] |= 27;
+                (&mut buf[1..9]).copy_from_slice(&value.to_be_bytes());
+                &buf[..9]
+            }
+        };
+        self.writer.write_all(buf_view).map_err(|e| e.into())
     }
 
     #[inline]
@@ -186,7 +299,7 @@ where
         &'a mut self,
         major: u8,
         len: Option<usize>,
-    ) -> Result<CollectionSerializer<'a, W>> {
+    ) -> Result<CollectionSerializer<'a, W, O>> {
         let needs_eof = match len {
             Some(len) => {
                 self.write_u64(major, len as u64)?;
@@ -207,20 +320,21 @@ where
     }
 }
 
-impl<'a, W> ser::Serializer for &'a mut Serializer<W>
+impl<'a, W, O> ser::Serializer for &'a mut Serializer<W, O>
 where
     W: Write,
+    O: SerializerOptions,
 {
     type Ok = ();
     type Error = Error;
 
-    type SerializeSeq = CollectionSerializer<'a, W>;
-    type SerializeTuple = &'a mut Serializer<W>;
-    type SerializeTupleStruct = &'a mut Serializer<W>;
-    type SerializeTupleVariant = &'a mut Serializer<W>;
-    type SerializeMap = CollectionSerializer<'a, W>;
-    type SerializeStruct = StructSerializer<'a, W>;
-    type SerializeStructVariant = StructSerializer<'a, W>;
+    type SerializeSeq = CollectionSerializer<'a, W, O>;
+    type SerializeTuple = &'a mut Serializer<W, O>;
+    type SerializeTupleStruct = &'a mut Serializer<W, O>;
+    type SerializeTupleVariant = &'a mut Serializer<W, O>;
+    type SerializeMap = CollectionSerializer<'a, W, O>;
+    type SerializeStruct = StructSerializer<'a, W, O>;
+    type SerializeStructVariant = StructSerializer<'a, W, O>;
 
     #[inline]
     fn serialize_bool(self, value: bool) -> Result<()> {
@@ -230,38 +344,27 @@ where
 
     #[inline]
     fn serialize_i8(self, value: i8) -> Result<()> {
-        if value < 0 {
-            self.write_u8(1, -(value + 1) as u8)
-        } else {
-            self.write_u8(0, value as u8)
-        }
+        self.serialize_i64(value as i64)
     }
 
     #[inline]
     fn serialize_i16(self, value: i16) -> Result<()> {
-        if value < 0 {
-            self.write_u16(1, -(value + 1) as u16)
-        } else {
-            self.write_u16(0, value as u16)
-        }
+        self.serialize_i64(value as i64)
     }
 
     #[inline]
     fn serialize_i32(self, value: i32) -> Result<()> {
-        if value < 0 {
-            self.write_u32(1, -(value + 1) as u32)
-        } else {
-            self.write_u32(0, value as u32)
-        }
+        self.serialize_i64(value as i64)
     }
 
     #[inline]
     fn serialize_i64(self, value: i64) -> Result<()> {
-        if value < 0 {
-            self.write_u64(1, -(value + 1) as u64)
+        let (major, u64_value) = if value < 0 {
+            (1, -(value + 1) as u64)
         } else {
-            self.write_u64(0, value as u64)
-        }
+            (0, value as u64)
+        };
+        self.write_u64(major, u64_value)
     }
 
     #[inline]
@@ -281,17 +384,17 @@ where
 
     #[inline]
     fn serialize_u8(self, value: u8) -> Result<()> {
-        self.write_u8(0, value)
+        self.write_u64(0, value as u64)
     }
 
     #[inline]
     fn serialize_u16(self, value: u16) -> Result<()> {
-        self.write_u16(0, value)
+        self.write_u64(0, value as u64)
     }
 
     #[inline]
     fn serialize_u32(self, value: u32) -> Result<()> {
-        self.write_u32(0, value)
+        self.write_u64(0, value as u64)
     }
 
     #[inline]
@@ -393,7 +496,7 @@ where
         variant_index: u32,
         variant: &'static str,
     ) -> Result<()> {
-        if self.packed {
+        if self.options.packed() {
             self.serialize_u32(variant_index)
         } else {
             self.serialize_str(variant)
@@ -424,7 +527,7 @@ where
     where
         T: ?Sized + ser::Serialize,
     {
-        if self.enum_as_map {
+        if self.options.enum_as_map() {
             self.write_u64(5, 1u64)?;
             variant.serialize(&mut *self)?;
         } else {
@@ -435,12 +538,12 @@ where
     }
 
     #[inline]
-    fn serialize_seq(self, len: Option<usize>) -> Result<CollectionSerializer<'a, W>> {
+    fn serialize_seq(self, len: Option<usize>) -> Result<CollectionSerializer<'a, W, O>> {
         self.serialize_collection(4, len)
     }
 
     #[inline]
-    fn serialize_tuple(self, len: usize) -> Result<&'a mut Serializer<W>> {
+    fn serialize_tuple(self, len: usize) -> Result<&'a mut Serializer<W, O>> {
         self.write_u64(4, len as u64)?;
         Ok(self)
     }
@@ -450,7 +553,7 @@ where
         self,
         _name: &'static str,
         len: usize,
-    ) -> Result<&'a mut Serializer<W>> {
+    ) -> Result<&'a mut Serializer<W, O>> {
         self.serialize_tuple(len)
     }
 
@@ -461,8 +564,8 @@ where
         variant_index: u32,
         variant: &'static str,
         len: usize,
-    ) -> Result<&'a mut Serializer<W>> {
-        if self.enum_as_map {
+    ) -> Result<&'a mut Serializer<W, O>> {
+        if self.options.enum_as_map() {
             self.write_u64(5, 1u64)?;
             variant.serialize(&mut *self)?;
             self.serialize_tuple(len)
@@ -474,7 +577,7 @@ where
     }
 
     #[inline]
-    fn serialize_map(self, len: Option<usize>) -> Result<CollectionSerializer<'a, W>> {
+    fn serialize_map(self, len: Option<usize>) -> Result<CollectionSerializer<'a, W, O>> {
         self.serialize_collection(5, len)
     }
 
@@ -492,7 +595,11 @@ where
     }
 
     #[inline]
-    fn serialize_struct(self, _name: &'static str, len: usize) -> Result<StructSerializer<'a, W>> {
+    fn serialize_struct(
+        self,
+        _name: &'static str,
+        len: usize,
+    ) -> Result<StructSerializer<'a, W, O>> {
         self.write_u64(5, len as u64)?;
         Ok(StructSerializer { ser: self, idx: 0 })
     }
@@ -504,8 +611,8 @@ where
         variant_index: u32,
         variant: &'static str,
         len: usize,
-    ) -> Result<StructSerializer<'a, W>> {
-        if self.enum_as_map {
+    ) -> Result<StructSerializer<'a, W, O>> {
+        if self.options.enum_as_map() {
             self.write_u64(5, 1u64)?;
         } else {
             self.writer.write_all(&[4 << 5 | 2]).map_err(|e| e.into())?;
@@ -520,9 +627,10 @@ where
     }
 }
 
-impl<'a, W> ser::SerializeTuple for &'a mut Serializer<W>
+impl<'a, W, O> ser::SerializeTuple for &'a mut Serializer<W, O>
 where
     W: Write,
+    O: SerializerOptions,
 {
     type Ok = ();
     type Error = Error;
@@ -541,9 +649,10 @@ where
     }
 }
 
-impl<'a, W> ser::SerializeTupleStruct for &'a mut Serializer<W>
+impl<'a, W, O> ser::SerializeTupleStruct for &'a mut Serializer<W, O>
 where
     W: Write,
+    O: SerializerOptions,
 {
     type Ok = ();
     type Error = Error;
@@ -562,9 +671,10 @@ where
     }
 }
 
-impl<'a, W> ser::SerializeTupleVariant for &'a mut Serializer<W>
+impl<'a, W, O> ser::SerializeTupleVariant for &'a mut Serializer<W, O>
 where
     W: Write,
+    O: SerializerOptions,
 {
     type Ok = ();
     type Error = Error;
@@ -584,21 +694,22 @@ where
 }
 
 #[doc(hidden)]
-pub struct StructSerializer<'a, W> {
-    ser: &'a mut Serializer<W>,
+pub struct StructSerializer<'a, W, O> {
+    ser: &'a mut Serializer<W, O>,
     idx: u32,
 }
 
-impl<'a, W> StructSerializer<'a, W>
+impl<'a, W, O> StructSerializer<'a, W, O>
 where
     W: Write,
+    O: SerializerOptions,
 {
     #[inline]
     fn serialize_field_inner<T>(&mut self, key: &'static str, value: &T) -> Result<()>
     where
         T: ?Sized + ser::Serialize,
     {
-        if self.ser.packed {
+        if self.ser.options.packed() {
             self.idx.serialize(&mut *self.ser)?;
         } else {
             key.serialize(&mut *self.ser)?;
@@ -620,9 +731,10 @@ where
     }
 }
 
-impl<'a, W> ser::SerializeStruct for StructSerializer<'a, W>
+impl<'a, W, O> ser::SerializeStruct for StructSerializer<'a, W, O>
 where
     W: Write,
+    O: SerializerOptions,
 {
     type Ok = ();
     type Error = Error;
@@ -646,9 +758,10 @@ where
     }
 }
 
-impl<'a, W> ser::SerializeStructVariant for StructSerializer<'a, W>
+impl<'a, W, O> ser::SerializeStructVariant for StructSerializer<'a, W, O>
 where
     W: Write,
+    O: SerializerOptions,
 {
     type Ok = ();
     type Error = Error;
@@ -673,14 +786,15 @@ where
 }
 
 #[doc(hidden)]
-pub struct CollectionSerializer<'a, W> {
-    ser: &'a mut Serializer<W>,
+pub struct CollectionSerializer<'a, W, O> {
+    ser: &'a mut Serializer<W, O>,
     needs_eof: bool,
 }
 
-impl<'a, W> CollectionSerializer<'a, W>
+impl<'a, W, O> CollectionSerializer<'a, W, O>
 where
     W: Write,
+    O: SerializerOptions,
 {
     #[inline]
     fn end_inner(self) -> Result<()> {
@@ -692,9 +806,10 @@ where
     }
 }
 
-impl<'a, W> ser::SerializeSeq for CollectionSerializer<'a, W>
+impl<'a, W, O> ser::SerializeSeq for CollectionSerializer<'a, W, O>
 where
     W: Write,
+    O: SerializerOptions,
 {
     type Ok = ();
     type Error = Error;
@@ -713,9 +828,10 @@ where
     }
 }
 
-impl<'a, W> ser::SerializeMap for CollectionSerializer<'a, W>
+impl<'a, W, O> ser::SerializeMap for CollectionSerializer<'a, W, O>
 where
     W: Write,
+    O: SerializerOptions,
 {
     type Ok = ();
     type Error = Error;
