@@ -585,7 +585,7 @@ impl<'a> Read<'a> for MutSliceRead<'a> {
     }
 
     fn clear_buffer(&mut self) {
-        self.slice = &mut std::mem::take(&mut self.slice)[self.index..];
+        self.slice = &mut core::mem::take(&mut self.slice)[self.index..];
         self.before += self.index;
         self.index = 0;
         self.buffer_end = 0;
@@ -605,7 +605,7 @@ impl<'a> Read<'a> for MutSliceRead<'a> {
     }
 
     fn take_buffer<'b>(&'b mut self) -> EitherLifetime<'b, 'a> {
-        let (left, right) = std::mem::take(&mut self.slice).split_at_mut(self.index);
+        let (left, right) = core::mem::take(&mut self.slice).split_at_mut(self.index);
         self.slice = right;
         self.before += self.index;
         self.index = 0;
