@@ -248,6 +248,7 @@ struct ErrorImpl {
 #[derive(Debug)]
 pub(crate) enum ErrorCode {
     #[cfg(feature = "std")]
+    #[expect(clippy::box_collection)]
     Message(Box<String>),
     #[cfg(not(feature = "std"))]
     Message,
