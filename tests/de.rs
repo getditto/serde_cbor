@@ -49,7 +49,7 @@ mod std_tests {
 
     use serde_cbor::de::CustomDeserializerOptions;
     use serde_cbor::value::Value;
-    use serde_cbor::{de, error, to_vec, Deserializer};
+    use serde_cbor::{Deserializer, de, error, to_vec};
     use serde_core::de as serde_de;
 
     #[test]

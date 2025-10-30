@@ -127,14 +127,16 @@ mod std_tests {
         profession: Option<String>,
     }
 
-    testcase!(test_person_struct,
-    Person,
-    Person {
-        name: "Grace Hopper".to_string(),
-        year_of_birth: 1906,
-        profession: Some("computer scientist".to_string()),
-    },
-    "a3646e616d656c477261636520486f707065726d796561725f6f665f62697274681907726a70726f66657373696f6e72636f6d707574657220736369656e74697374");
+    testcase!(
+        test_person_struct,
+        Person,
+        Person {
+            name: "Grace Hopper".to_string(),
+            year_of_birth: 1906,
+            profession: Some("computer scientist".to_string()),
+        },
+        "a3646e616d656c477261636520486f707065726d796561725f6f665f62697274681907726a70726f66657373696f6e72636f6d707574657220736369656e74697374"
+    );
 
     #[derive(Debug, PartialEq, Deserialize, Serialize)]
     struct OptionalPerson {
@@ -144,14 +146,16 @@ mod std_tests {
         profession: Option<String>,
     }
 
-    testcase!(test_optional_person_struct,
-    OptionalPerson,
-    OptionalPerson {
-        name: "Grace Hopper".to_string(),
-        year_of_birth: None,
-        profession: Some("computer scientist".to_string()),
-    },
-    "a2646e616d656c477261636520486f707065726a70726f66657373696f6e72636f6d707574657220736369656e74697374");
+    testcase!(
+        test_optional_person_struct,
+        OptionalPerson,
+        OptionalPerson {
+            name: "Grace Hopper".to_string(),
+            year_of_birth: None,
+            profession: Some("computer scientist".to_string()),
+        },
+        "a2646e616d656c477261636520486f707065726a70726f66657373696f6e72636f6d707574657220736369656e74697374"
+    );
 
     #[derive(Debug, PartialEq, Deserialize, Serialize)]
     enum Color {

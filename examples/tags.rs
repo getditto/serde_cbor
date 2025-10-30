@@ -1,6 +1,6 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_cbor::tags::Tagged;
 use serde_cbor::Value;
+use serde_cbor::tags::Tagged;
 use std::error::Error;
 
 /// https://tools.ietf.org/html/rfc7049#section-2.4.1
