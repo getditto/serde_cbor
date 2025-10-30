@@ -2,7 +2,6 @@
 use alloc::{vec, vec::Vec};
 #[cfg(feature = "std")]
 use core::cmp;
-use core::mem;
 
 #[cfg(feature = "std")]
 use std::io::{self, Read as StdRead};
@@ -478,7 +477,7 @@ impl<'a, 'b> Read<'a> for SliceReadFixed<'a, 'b> {
         let end = self.end(n)?;
         let scratch_end = self.scratch_end(n)?;
         let slice = &self.slice[self.index..end];
-        self.scratch[self.scratch_index..scratch_end].copy_from_slice(&slice);
+        self.scratch[self.scratch_index..scratch_end].copy_from_slice(slice);
         self.index = end;
         self.scratch_index = scratch_end;
 
@@ -586,7 +585,7 @@ impl<'a> Read<'a> for MutSliceRead<'a> {
     }
 
     fn clear_buffer(&mut self) {
-        self.slice = &mut mem::replace(&mut self.slice, &mut [])[self.index..];
+        self.slice = &mut std::mem::take(&mut self.slice)[self.index..];
         self.before += self.index;
         self.index = 0;
         self.buffer_end = 0;
@@ -606,7 +605,7 @@ impl<'a> Read<'a> for MutSliceRead<'a> {
     }
 
     fn take_buffer<'b>(&'b mut self) -> EitherLifetime<'b, 'a> {
-        let (left, right) = mem::replace(&mut self.slice, &mut []).split_at_mut(self.index);
+        let (left, right) = std::mem::take(&mut self.slice).split_at_mut(self.index);
         self.slice = right;
         self.before += self.index;
         self.index = 0;
