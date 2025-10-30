@@ -6,7 +6,7 @@ use core::marker::PhantomData;
 use core::result;
 use core::str;
 use half::f16;
-use serde::de;
+use serde_core::de;
 #[cfg(feature = "std")]
 use std::io;
 
@@ -450,7 +450,7 @@ where
     }
 
     #[inline]
-    fn convert_str<'a>(buf: &'a [u8], offset: u64) -> Result<&'a str> {
+    fn convert_str(buf: &[u8], offset: u64) -> Result<&str> {
         match str::from_utf8(buf) {
             Ok(s) => Ok(s),
             Err(_) => Err(Error::syntax(ErrorCode::InvalidUtf8, offset)),
@@ -768,7 +768,7 @@ where
     }
 }
 
-impl<'de, 'a, R, O> de::Deserializer<'de> for &'a mut Deserializer<R, O>
+impl<'de, R, O> de::Deserializer<'de> for &mut Deserializer<R, O>
 where
     R: Read<'de>,
     O: DeserializerOptions,

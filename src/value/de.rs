@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use crate::value::Value;
-use serde::de;
+use serde_core::de;
 
 impl<'de> de::Deserialize<'de> for Value {
     #[inline]
@@ -136,7 +136,7 @@ impl<'de> de::Deserialize<'de> for Value {
 
             fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
             where
-                D: serde::Deserializer<'de>,
+                D: serde_core::Deserializer<'de>,
             {
                 let tag = crate::tags::get_tag();
                 let inner = deserializer.deserialize_any(self);
@@ -159,7 +159,7 @@ where
 {
     // TODO implement in a way that doesn't require
     // roundtrip through buffer (i.e. by implementing
-    // `serde::de::Deserializer` for `Value` and then doing
+    // `serde_core::de::Deserializer` for `Value` and then doing
     // `T::deserialize(value)`).
     let buf = crate::to_vec(&value)?;
     crate::from_slice(buf.as_slice())

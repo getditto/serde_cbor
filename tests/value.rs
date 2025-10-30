@@ -1,5 +1,5 @@
 #[macro_use]
-extern crate serde_derive;
+extern crate serde;
 
 #[cfg(feature = "std")]
 mod std_tests {

@@ -9,7 +9,7 @@ pub use crate::write::{SliceWrite, Write};
 
 use crate::error::{Error, Result};
 use half::f16;
-use serde::ser::{self, Serialize};
+use serde_core::ser::{self, Serialize};
 #[cfg(feature = "std")]
 use std::io;
 
@@ -256,7 +256,7 @@ where
     #[inline]
     pub fn self_describe(&mut self) -> Result<()> {
         let mut buf = [6 << 5 | 25, 0, 0];
-        (&mut buf[1..]).copy_from_slice(&55799u16.to_be_bytes());
+        buf[1..].copy_from_slice(&55799u16.to_be_bytes());
         self.writer.write_all(&buf).map_err(|e| e.into())
     }
 
@@ -272,24 +272,22 @@ where
         let buf_view = if value <= 0x17 {
             buf[0] |= value as u8;
             &buf[..1]
+        } else if value <= u8::MAX as u64 {
+            buf[0] |= 24;
+            buf[1] = value as u8;
+            &buf[..2]
+        } else if value <= u16::MAX as u64 {
+            buf[0] |= 25;
+            buf[1..3].copy_from_slice(&(value as u16).to_be_bytes());
+            &buf[..3]
+        } else if value <= u32::MAX as u64 {
+            buf[0] |= 26;
+            buf[1..5].copy_from_slice(&(value as u32).to_be_bytes());
+            &buf[..5]
         } else {
-            if value <= u8::MAX as u64 {
-                buf[0] |= 24;
-                buf[1] = value as u8;
-                &buf[..2]
-            } else if value <= u16::MAX as u64 {
-                buf[0] |= 25;
-                (&mut buf[1..3]).copy_from_slice(&(value as u16).to_be_bytes());
-                &buf[..3]
-            } else if value <= u32::MAX as u64 {
-                buf[0] |= 26;
-                (&mut buf[1..5]).copy_from_slice(&(value as u32).to_be_bytes());
-                &buf[..5]
-            } else {
-                buf[0] |= 27;
-                (&mut buf[1..9]).copy_from_slice(&value.to_be_bytes());
-                &buf[..9]
-            }
+            buf[0] |= 27;
+            buf[1..9].copy_from_slice(&value.to_be_bytes());
+            &buf[..9]
         };
         self.writer.write_all(buf_view).map_err(|e| e.into())
     }
@@ -423,11 +421,11 @@ where
             self.writer.write_all(&[0xf9, 0x7e, 0x00])
         } else if f32::from(f16::from_f32(value)) == value {
             let mut buf = [0xf9, 0, 0];
-            (&mut buf[1..]).copy_from_slice(&f16::from_f32(value).to_bits().to_be_bytes());
+            buf[1..].copy_from_slice(&f16::from_f32(value).to_bits().to_be_bytes());
             self.writer.write_all(&buf)
         } else {
             let mut buf = [0xfa, 0, 0, 0, 0];
-            (&mut buf[1..]).copy_from_slice(&value.to_bits().to_be_bytes());
+            buf[1..].copy_from_slice(&value.to_bits().to_be_bytes());
             self.writer.write_all(&buf)
         }
         .map_err(|e| e.into())
@@ -440,7 +438,7 @@ where
             self.serialize_f32(value as f32)
         } else {
             let mut buf = [0xfb, 0, 0, 0, 0, 0, 0, 0, 0];
-            (&mut buf[1..]).copy_from_slice(&value.to_bits().to_be_bytes());
+            buf[1..].copy_from_slice(&value.to_bits().to_be_bytes());
             self.writer.write_all(&buf).map_err(|e| e.into())
         }
     }
@@ -627,7 +625,7 @@ where
     }
 }
 
-impl<'a, W, O> ser::SerializeTuple for &'a mut Serializer<W, O>
+impl<W, O> ser::SerializeTuple for &mut Serializer<W, O>
 where
     W: Write,
     O: SerializerOptions,
@@ -649,7 +647,7 @@ where
     }
 }
 
-impl<'a, W, O> ser::SerializeTupleStruct for &'a mut Serializer<W, O>
+impl<W, O> ser::SerializeTupleStruct for &mut Serializer<W, O>
 where
     W: Write,
     O: SerializerOptions,
@@ -671,7 +669,7 @@ where
     }
 }
 
-impl<'a, W, O> ser::SerializeTupleVariant for &'a mut Serializer<W, O>
+impl<W, O> ser::SerializeTupleVariant for &mut Serializer<W, O>
 where
     W: Write,
     O: SerializerOptions,
