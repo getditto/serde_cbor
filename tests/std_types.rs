@@ -19,7 +19,7 @@ mod std_tests {
     }
 
     macro_rules! testcase {
-        ($name:ident, f64, $expr:expr, $s:expr) => {
+        ($name:ident, f64, $expr:expr_2021, $s:expr_2021) => {
             #[test]
             fn $name() {
                 let expr: f64 = $expr;
@@ -47,7 +47,7 @@ mod std_tests {
                 }
             }
         };
-        ($name:ident, $ty:ty, $expr:expr, $s:expr) => {
+        ($name:ident, $ty:ty, $expr:expr_2021, $s:expr_2021) => {
             #[test]
             fn $name() {
                 let expr: $ty = $expr;

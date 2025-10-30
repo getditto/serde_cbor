@@ -10,7 +10,7 @@ license = "MIT/Apache-2.0"
 description = "CBOR support for serde."
 keywords = ["serde", "cbor", "serialization", "no_std"]
 categories = ["encoding"]
-edition = "2018"
+edition = "2024"
 
 [badges]
 travis-ci = { repository = "pyfisch/cbor" }
