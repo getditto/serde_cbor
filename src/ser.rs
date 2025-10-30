@@ -13,7 +13,7 @@ use serde_core::ser::{self, Serialize};
 #[cfg(feature = "std")]
 use std::io;
 
-use crate::tags::{get_tag, CBOR_NEWTYPE_NAME};
+use crate::tags::{CBOR_NEWTYPE_NAME, get_tag};
 
 /// Serializes a value to a vector.
 #[cfg(any(feature = "std", feature = "alloc"))]
@@ -368,12 +368,12 @@ where
     #[inline]
     fn serialize_i128(self, value: i128) -> Result<()> {
         if value < 0 {
-            if -(value + 1) > i128::from(u64::max_value()) {
+            if -(value + 1) > i128::from(u64::MAX) {
                 return Err(Error::message("The number can't be stored in CBOR"));
             }
             self.write_u64(1, -(value + 1) as u64)
         } else {
-            if value > i128::from(u64::max_value()) {
+            if value > i128::from(u64::MAX) {
                 return Err(Error::message("The number can't be stored in CBOR"));
             }
             self.write_u64(0, value as u64)
@@ -402,7 +402,7 @@ where
 
     #[inline]
     fn serialize_u128(self, value: u128) -> Result<()> {
-        if value > u128::from(u64::max_value()) {
+        if value > u128::from(u64::MAX) {
             return Err(Error::message("The number can't be stored in CBOR"));
         }
         self.write_u64(0, value as u64)
@@ -472,7 +472,7 @@ where
     #[inline]
     fn serialize_some<T>(self, value: &T) -> Result<()>
     where
-        T: ?Sized + ser::Serialize,
+        T: ser::Serialize + ?Sized,
     {
         value.serialize(self)
     }
@@ -504,7 +504,7 @@ where
     #[inline]
     fn serialize_newtype_struct<T>(self, name: &'static str, value: &T) -> Result<()>
     where
-        T: ?Sized + ser::Serialize,
+        T: ser::Serialize + ?Sized,
     {
         if name == CBOR_NEWTYPE_NAME {
             for tag in get_tag().into_iter() {
@@ -523,7 +523,7 @@ where
         value: &T,
     ) -> Result<()>
     where
-        T: ?Sized + ser::Serialize,
+        T: ser::Serialize + ?Sized,
     {
         if self.options.enum_as_map() {
             self.write_u64(5, 1u64)?;
@@ -636,7 +636,7 @@ where
     #[inline]
     fn serialize_element<T>(&mut self, value: &T) -> Result<()>
     where
-        T: ?Sized + ser::Serialize,
+        T: ser::Serialize + ?Sized,
     {
         value.serialize(&mut **self)
     }
@@ -658,7 +658,7 @@ where
     #[inline]
     fn serialize_field<T>(&mut self, value: &T) -> Result<()>
     where
-        T: ?Sized + ser::Serialize,
+        T: ser::Serialize + ?Sized,
     {
         value.serialize(&mut **self)
     }
@@ -680,7 +680,7 @@ where
     #[inline]
     fn serialize_field<T>(&mut self, value: &T) -> Result<()>
     where
-        T: ?Sized + ser::Serialize,
+        T: ser::Serialize + ?Sized,
     {
         value.serialize(&mut **self)
     }
@@ -705,7 +705,7 @@ where
     #[inline]
     fn serialize_field_inner<T>(&mut self, key: &'static str, value: &T) -> Result<()>
     where
-        T: ?Sized + ser::Serialize,
+        T: ser::Serialize + ?Sized,
     {
         if self.ser.options.packed() {
             self.idx.serialize(&mut *self.ser)?;
@@ -740,7 +740,7 @@ where
     #[inline]
     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
     where
-        T: ?Sized + ser::Serialize,
+        T: ser::Serialize + ?Sized,
     {
         self.serialize_field_inner(key, value)
     }
@@ -767,7 +767,7 @@ where
     #[inline]
     fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
     where
-        T: ?Sized + ser::Serialize,
+        T: ser::Serialize + ?Sized,
     {
         self.serialize_field_inner(key, value)
     }
@@ -837,7 +837,7 @@ where
     #[inline]
     fn serialize_key<T>(&mut self, key: &T) -> Result<()>
     where
-        T: ?Sized + ser::Serialize,
+        T: ser::Serialize + ?Sized,
     {
         key.serialize(&mut *self.ser)
     }
@@ -845,7 +845,7 @@ where
     #[inline]
     fn serialize_value<T>(&mut self, value: &T) -> Result<()>
     where
-        T: ?Sized + ser::Serialize,
+        T: ser::Serialize + ?Sized,
     {
         value.serialize(&mut *self.ser)
     }
