@@ -17,17 +17,17 @@ travis-ci = { repository = "pyfisch/cbor" }
 maintenance = { status = "as-is" }
 
 [dependencies]
-half = "1.2.0"
-serde = { version = "1.0.14", default-features = false }
+half = "2.7.1"
+serde_core = { version = "1.0.228", default-features = false }
 
 [dev-dependencies]
-serde_derive = { version = "1.0.14", default-features = false }
+serde = { version = "1.0.228", features = ["derive"] }
 
 [features]
 default = ["std"]
 # Uses `alloc` library and adds support for vector functions with
 # `no_std`.
-alloc = ["serde/alloc"]
-std = ["serde/std" ]
+alloc = ["serde_core/alloc"]
+std = ["serde_core/std"]
 unsealed_read_write = []
 tags = []

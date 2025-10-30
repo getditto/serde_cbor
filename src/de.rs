@@ -6,7 +6,7 @@ use core::marker::PhantomData;
 use core::result;
 use core::str;
 use half::f16;
-use serde::de;
+use serde_core::de;
 #[cfg(feature = "std")]
 use std::io;
 

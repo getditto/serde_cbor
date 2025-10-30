@@ -1,5 +1,5 @@
 #[macro_use]
-extern crate serde_derive;
+extern crate serde;
 
 use serde_cbor;
 use serde_cbor::de;
@@ -47,10 +47,10 @@ fn test_indefinite_object() {
 mod std_tests {
     use std::collections::BTreeMap;
 
-    use serde::de as serde_de;
     use serde_cbor::de::CustomDeserializerOptions;
     use serde_cbor::value::Value;
     use serde_cbor::{de, error, to_vec, Deserializer};
+    use serde_core::de as serde_de;
 
     #[test]
     fn test_string1() {

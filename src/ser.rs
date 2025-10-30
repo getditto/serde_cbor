@@ -9,7 +9,7 @@ pub use crate::write::{SliceWrite, Write};
 
 use crate::error::{Error, Result};
 use half::f16;
-use serde::ser::{self, Serialize};
+use serde_core::ser::{self, Serialize};
 #[cfg(feature = "std")]
 use std::io;
 

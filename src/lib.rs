@@ -12,7 +12,7 @@
 //! minimal modifications to the program code.
 //!
 //! ```rust
-//! use serde_derive::{Deserialize, Serialize};
+//! use serde::{Deserialize, Serialize};
 //! use std::error::Error;
 //! use std::fs::File;
 //!
@@ -57,8 +57,8 @@
 //! # Type-based Serialization and Deserialization
 //! Serde provides a mechanism for low boilerplate serialization & deserialization of values to and
 //! from CBOR via the serialization API. To be able to serialize a piece of data, it must implement
-//! the `serde::Serialize` trait. To be able to deserialize a piece of data, it must implement the
-//! `serde::Deserialize` trait. Serde provides an annotation to automatically generate the
+//! the `serde_core::Serialize` trait. To be able to deserialize a piece of data, it must implement the
+//! `serde_core::Deserialize` trait. Serde provides an annotation to automatically generate the
 //! code for these traits: `#[derive(Serialize, Deserialize)]`.
 //!
 //! The CBOR API also provides an enum `serde_cbor::Value`.
@@ -133,7 +133,7 @@
 //!     0x61, 0x72,
 //! ];
 //! let mut deserializer = Deserializer::from_slice(&data);
-//! let value: &str = serde::de::Deserialize::deserialize(&mut deserializer)
+//! let value: &str = serde_core::de::Deserialize::deserialize(&mut deserializer)
 //!     .unwrap();
 //! let rest = &data[deserializer.byte_offset()..];
 //! assert_eq!(value, "foobar");
@@ -144,7 +144,7 @@
 //! Serialize using packed encoding
 //!
 //! ```rust
-//! use serde_derive::{Deserialize, Serialize};
+//! use serde::{Deserialize, Serialize};
 //! use serde_cbor::ser::to_vec_packed;
 //! use WithTwoVariants::*;
 //!
@@ -164,13 +164,13 @@
 //! Serialize using minimal encoding
 //!
 //! ```rust
-//! use serde_derive::{Deserialize, Serialize};
+//! use serde::{Deserialize, Serialize};
 //! use serde_cbor::{Result, Serializer, ser::{self, IoWrite}};
 //! use WithTwoVariants::*;
 //!
 //! fn to_vec_minimal<T>(value: &T) -> Result<Vec<u8>>
 //! where
-//!     T: serde::Serialize,
+//!     T: serde_core::Serialize,
 //! {
 //!     let mut vec = Vec::new();
 //!     value.serialize(&mut Serializer::new(&mut IoWrite::new(&mut vec)).packed_format().legacy_enums())?;
@@ -214,9 +214,9 @@
 //!
 //! Serialize an object with `no_std` and without `alloc`.
 //! ``` rust
-//! # #[macro_use] extern crate serde_derive;
+//! # #[macro_use] extern crate serde;
 //! # fn main() -> Result<(), serde_cbor::Error> {
-//! use serde::Serialize;
+//! use serde_core::Serialize;
 //! use serde_cbor::Serializer;
 //! use serde_cbor::ser::SliceWrite;
 //!
@@ -248,7 +248,7 @@
 //!
 //! Deserialize an object.
 //! ``` rust
-//! # #[macro_use] extern crate serde_derive;
+//! # #[macro_use] extern crate serde;
 //! # fn main() -> Result<(), serde_cbor::Error> {
 //! #[derive(Debug, PartialEq, Deserialize)]
 //! struct User {

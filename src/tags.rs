@@ -1,11 +1,11 @@
 //! Support for cbor tags
 use core::fmt;
 use core::marker::PhantomData;
-use serde::de::{
+use serde_core::de::{
     Deserialize, Deserializer, EnumAccess, IntoDeserializer, MapAccess, SeqAccess, Visitor,
 };
-use serde::forward_to_deserialize_any;
-use serde::ser::{Serialize, Serializer};
+use serde_core::forward_to_deserialize_any;
+use serde_core::ser::{Serialize, Serializer};
 
 /// signals that a newtype is from a CBOR tag
 pub(crate) const CBOR_NEWTYPE_NAME: &str = "\0cbor_tag";
@@ -42,7 +42,7 @@ fn untagged<T>(value: T) -> Tagged<T> {
 
 macro_rules! delegate {
     ($name: ident, $type: ty) => {
-        fn $name<E: serde::de::Error>(self, v: $type) -> Result<Self::Value, E> {
+        fn $name<E: serde_core::de::Error>(self, v: $type) -> Result<Self::Value, E> {
             T::deserialize(v.into_deserializer()).map(untagged)
         }
     };
@@ -71,7 +71,7 @@ struct NoneDeserializer<E>(PhantomData<E>);
 
 impl<'de, E> Deserializer<'de> for NoneDeserializer<E>
 where
-    E: serde::de::Error,
+    E: serde_core::de::Error,
 {
     type Error = E;
 
@@ -90,7 +90,7 @@ struct BytesDeserializer<'a, E>(&'a [u8], PhantomData<E>);
 
 impl<'de, 'a, E> Deserializer<'de> for BytesDeserializer<'a, E>
 where
-    E: serde::de::Error,
+    E: serde_core::de::Error,
 {
     type Error = E;
 
@@ -140,19 +140,22 @@ impl<'de, T: Deserialize<'de>> Visitor<'de> for MaybeTaggedVisitor<T> {
     #[cfg(feature = "std")]
     delegate!(visit_string, String);
 
-    fn visit_bytes<E: serde::de::Error>(self, value: &[u8]) -> Result<Self::Value, E> {
+    fn visit_bytes<E: serde_core::de::Error>(self, value: &[u8]) -> Result<Self::Value, E> {
         T::deserialize(BytesDeserializer(value, PhantomData)).map(untagged)
     }
 
-    fn visit_borrowed_bytes<E: serde::de::Error>(self, value: &'de [u8]) -> Result<Self::Value, E> {
-        T::deserialize(serde::de::value::BorrowedBytesDeserializer::new(value)).map(untagged)
+    fn visit_borrowed_bytes<E: serde_core::de::Error>(
+        self,
+        value: &'de [u8],
+    ) -> Result<Self::Value, E> {
+        T::deserialize(serde_core::de::value::BorrowedBytesDeserializer::new(value)).map(untagged)
     }
 
-    fn visit_unit<E: serde::de::Error>(self) -> Result<Self::Value, E> {
+    fn visit_unit<E: serde_core::de::Error>(self) -> Result<Self::Value, E> {
         T::deserialize(().into_deserializer()).map(untagged)
     }
 
-    fn visit_none<E: serde::de::Error>(self) -> Result<Self::Value, E> {
+    fn visit_none<E: serde_core::de::Error>(self) -> Result<Self::Value, E> {
         T::deserialize(NoneDeserializer(PhantomData)).map(untagged)
     }
 
@@ -161,18 +164,18 @@ impl<'de, T: Deserialize<'de>> Visitor<'de> for MaybeTaggedVisitor<T> {
     }
 
     fn visit_seq<A: SeqAccess<'de>>(self, seq: A) -> Result<Self::Value, A::Error> {
-        T::deserialize(serde::de::value::SeqAccessDeserializer::new(seq)).map(untagged)
+        T::deserialize(serde_core::de::value::SeqAccessDeserializer::new(seq)).map(untagged)
     }
 
     fn visit_map<V: MapAccess<'de>>(self, map: V) -> Result<Self::Value, V::Error> {
-        T::deserialize(serde::de::value::MapAccessDeserializer::new(map)).map(untagged)
+        T::deserialize(serde_core::de::value::MapAccessDeserializer::new(map)).map(untagged)
     }
 
     fn visit_enum<A: EnumAccess<'de>>(self, data: A) -> Result<Self::Value, A::Error> {
         T::deserialize(EnumDeserializer(data)).map(untagged)
     }
 
-    fn visit_newtype_struct<D: serde::Deserializer<'de>>(
+    fn visit_newtype_struct<D: serde_core::Deserializer<'de>>(
         self,
         deserializer: D,
     ) -> Result<Self::Value, D::Error> {
@@ -181,8 +184,10 @@ impl<'de, T: Deserialize<'de>> Visitor<'de> for MaybeTaggedVisitor<T> {
     }
 }
 
-impl<'de, T: serde::de::Deserialize<'de>> serde::de::Deserialize<'de> for Tagged<T> {
-    fn deserialize<D: serde::de::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+impl<'de, T: serde_core::de::Deserialize<'de>> serde_core::de::Deserialize<'de> for Tagged<T> {
+    fn deserialize<D: serde_core::de::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Self, D::Error> {
         deserializer.deserialize_any(MaybeTaggedVisitor::<T>(PhantomData))
     }
 }

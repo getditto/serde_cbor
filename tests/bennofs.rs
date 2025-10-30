@@ -1,9 +1,9 @@
 #[macro_use]
-extern crate serde_derive;
+extern crate serde;
 
-use serde::Serialize;
 use serde_cbor::ser::{CustomSerializerOptions, SliceWrite};
 use serde_cbor::{self, Serializer};
+use serde_core::Serialize;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 struct Example {

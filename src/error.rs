@@ -1,8 +1,8 @@
 //! When serializing or deserializing CBOR goes wrong.
 use core::fmt;
 use core::result;
-use serde::de;
-use serde::ser;
+use serde_core::de;
+use serde_core::ser;
 #[cfg(feature = "std")]
 use std::error;
 #[cfg(feature = "std")]

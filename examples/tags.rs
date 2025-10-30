@@ -1,8 +1,6 @@
-use serde::de::{Deserialize, Deserializer};
-use serde::ser::{Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_cbor::tags::Tagged;
 use serde_cbor::Value;
-use serde_derive::{Deserialize, Serialize};
 use std::error::Error;
 
 /// https://tools.ietf.org/html/rfc7049#section-2.4.1
@@ -20,7 +18,7 @@ impl<'de> Deserialize<'de> for Date {
         let tagged = Tagged::<String>::deserialize(deserializer)?;
         match tagged.tag {
             Some(0) | None => Ok(Date(tagged.value)),
-            Some(_) => Err(serde::de::Error::custom("unexpected tag")),
+            Some(_) => Err(serde_core::de::Error::custom("unexpected tag")),
         }
     }
 }
@@ -40,7 +38,7 @@ impl<'de> Deserialize<'de> for Uri {
         match tagged.tag {
             // allow deserialization even if there is no tag. Allows roundtrip via other formats such as json
             Some(0) | None => Ok(Uri(tagged.value)),
-            Some(_) => Err(serde::de::Error::custom("unexpected tag")),
+            Some(_) => Err(serde_core::de::Error::custom("unexpected tag")),
         }
     }
 }

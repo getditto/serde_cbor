@@ -1,4 +1,5 @@
 # Serde CBOR
+
 [![Build Status](https://travis-ci.org/pyfisch/cbor.svg?branch=master)](https://travis-ci.org/pyfisch/cbor)
 [![Crates.io](https://img.shields.io/crates/v/serde_cbor.svg)](https://crates.io/crates/serde_cbor)
 [![Documentation](https://docs.rs/serde_cbor/badge.svg)](https://docs.rs/serde_cbor)
@@ -14,12 +15,10 @@ Since this situation is unlikely to change anytime soon and no one else stepped 
 If the crate works for you there is no need to switch to another implementation.
 However if you encounter problems or for new projects I recommend you take a look at these crates:
 
-* [ciborium](https://crates.io/crates/ciborium)
-* [minicbor](https://crates.io/crates/minicbor)
+- [ciborium](https://crates.io/crates/ciborium)
+- [minicbor](https://crates.io/crates/minicbor)
 
 ~~ Pyfisch, August 2021
-
-
 
 This crate implements the Concise Binary Object Representation from [RFC 7049].
 It builds on [Serde], the generic serialization framework for Rust.
@@ -32,6 +31,7 @@ of the JSON data model that is small and very fast to parse.
 ## Usage
 
 Serde CBOR supports Rust 1.40 and up. Add this to your `Cargo.toml`:
+
 ```toml
 [dependencies]
 serde_cbor = "0.11.2"
@@ -41,7 +41,7 @@ Storing and loading Rust types is easy and requires only
 minimal modifications to the program code.
 
 ```rust
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fs::File;
 
@@ -84,14 +84,16 @@ There are a lot of options available to customize the format.
 To operate on untyped CBOR values have a look at the `Value` type.
 
 ## License
+
 Licensed under either of
 
- * Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
- * MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
 
 at your option.
 
 ### Contribution
+
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any
 additional terms or conditions.

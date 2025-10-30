@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde_core::Serialize;
 use serde_cbor::ser::{Serializer, SliceWrite};
 
 #[test]
@@ -43,7 +43,7 @@ fn serialize_and_compare<T: Serialize>(value: T, expected: &[u8]) {
 
 #[cfg(feature = "std")]
 mod std_tests {
-    use serde::Serializer;
+    use serde_core::Serializer;
     use serde_cbor::ser;
     use serde_cbor::{from_slice, to_vec};
     use std::collections::BTreeMap;

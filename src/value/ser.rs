@@ -9,16 +9,16 @@
 use std::collections::BTreeMap;
 
 use crate::error::Error;
-use serde::{self, Serialize};
+use serde_core::{self, Serialize};
 
 use crate::tags::Tagged;
 use crate::value::Value;
 
-impl serde::Serialize for Value {
+impl serde_core::Serialize for Value {
     #[inline]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer,
+        S: serde_core::Serializer,
     {
         match *self {
             Value::Integer(v) => serializer.serialize_i128(v),
@@ -37,7 +37,7 @@ impl serde::Serialize for Value {
 
 struct Serializer;
 
-impl serde::Serializer for Serializer {
+impl serde_core::Serializer for Serializer {
     type Ok = Value;
     type Error = Error;
 
@@ -268,7 +268,7 @@ pub struct SerializeStructVariant {
     map: BTreeMap<Value, Value>,
 }
 
-impl serde::ser::SerializeSeq for SerializeVec {
+impl serde_core::ser::SerializeSeq for SerializeVec {
     type Ok = Value;
     type Error = Error;
 
@@ -285,7 +285,7 @@ impl serde::ser::SerializeSeq for SerializeVec {
     }
 }
 
-impl serde::ser::SerializeTuple for SerializeVec {
+impl serde_core::ser::SerializeTuple for SerializeVec {
     type Ok = Value;
     type Error = Error;
 
@@ -293,15 +293,15 @@ impl serde::ser::SerializeTuple for SerializeVec {
     where
         T: Serialize,
     {
-        serde::ser::SerializeSeq::serialize_element(self, value)
+        serde_core::ser::SerializeSeq::serialize_element(self, value)
     }
 
     fn end(self) -> Result<Value, Error> {
-        serde::ser::SerializeSeq::end(self)
+        serde_core::ser::SerializeSeq::end(self)
     }
 }
 
-impl serde::ser::SerializeTupleStruct for SerializeVec {
+impl serde_core::ser::SerializeTupleStruct for SerializeVec {
     type Ok = Value;
     type Error = Error;
 
@@ -309,15 +309,15 @@ impl serde::ser::SerializeTupleStruct for SerializeVec {
     where
         T: Serialize,
     {
-        serde::ser::SerializeSeq::serialize_element(self, value)
+        serde_core::ser::SerializeSeq::serialize_element(self, value)
     }
 
     fn end(self) -> Result<Value, Error> {
-        serde::ser::SerializeSeq::end(self)
+        serde_core::ser::SerializeSeq::end(self)
     }
 }
 
-impl serde::ser::SerializeTupleVariant for SerializeTupleVariant {
+impl serde_core::ser::SerializeTupleVariant for SerializeTupleVariant {
     type Ok = Value;
     type Error = Error;
 
@@ -338,7 +338,7 @@ impl serde::ser::SerializeTupleVariant for SerializeTupleVariant {
     }
 }
 
-impl serde::ser::SerializeMap for SerializeMap {
+impl serde_core::ser::SerializeMap for SerializeMap {
     type Ok = Value;
     type Error = Error;
 
@@ -367,7 +367,7 @@ impl serde::ser::SerializeMap for SerializeMap {
     }
 }
 
-impl serde::ser::SerializeStruct for SerializeMap {
+impl serde_core::ser::SerializeStruct for SerializeMap {
     type Ok = Value;
     type Error = Error;
 
@@ -375,16 +375,16 @@ impl serde::ser::SerializeStruct for SerializeMap {
     where
         T: Serialize,
     {
-        serde::ser::SerializeMap::serialize_key(self, key)?;
-        serde::ser::SerializeMap::serialize_value(self, value)
+        serde_core::ser::SerializeMap::serialize_key(self, key)?;
+        serde_core::ser::SerializeMap::serialize_value(self, value)
     }
 
     fn end(self) -> Result<Value, Error> {
-        serde::ser::SerializeMap::end(self)
+        serde_core::ser::SerializeMap::end(self)
     }
 }
 
-impl serde::ser::SerializeStructVariant for SerializeStructVariant {
+impl serde_core::ser::SerializeStructVariant for SerializeStructVariant {
     type Ok = Value;
     type Error = Error;
 
@@ -410,10 +410,8 @@ impl serde::ser::SerializeStructVariant for SerializeStructVariant {
 /// any valid CBOR data.
 ///
 /// ```rust
-/// extern crate serde;
-///
 /// #[macro_use]
-/// extern crate serde_derive;
+/// extern crate serde;
 /// extern crate serde_cbor;
 ///
 /// use std::error::Error;

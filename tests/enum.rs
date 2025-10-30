@@ -3,7 +3,7 @@ use serde_cbor;
 use serde_cbor::ser::{Serializer, SliceWrite};
 
 #[macro_use]
-extern crate serde_derive;
+extern crate serde;
 
 #[test]
 fn test_simple_data_enum_roundtrip() {
@@ -31,11 +31,11 @@ fn test_simple_data_enum_roundtrip() {
 mod std_tests {
     use std::collections::BTreeMap;
 
-    use serde::Deserialize;
     use serde_cbor::de::{CustomDeserializerOptions, SliceRead};
     use serde_cbor::ser::{CustomSerializerOptions, Serializer};
     use serde_cbor::value::Value;
     use serde_cbor::{from_slice, to_vec, Deserializer};
+    use serde_core::Deserialize;
 
     pub fn from_slice_legacy<'a, T>(slice: &'a [u8]) -> Result<T, serde_cbor::Error>
     where
@@ -49,7 +49,7 @@ mod std_tests {
 
     pub fn to_vec_legacy<T>(value: &T) -> serde_cbor::Result<Vec<u8>>
     where
-        T: serde::ser::Serialize,
+        T: serde_core::ser::Serialize,
     {
         let options = CustomSerializerOptions::new().set_enum_as_map(false);
         let mut vec = Vec::new();
