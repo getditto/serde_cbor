@@ -434,7 +434,7 @@ where
                 0x40..=0x57 => byte as usize - 0x40,
                 0x58..=0x5b => {
                     let len = self.parse_uint(byte - 0x57)?;
-                    if len > usize::max_value() as u64 {
+                    if len > usize::MAX as u64 {
                         return Err(self.error(ErrorCode::LengthOutOfRange));
                     }
                     len as usize
@@ -489,7 +489,7 @@ where
                 0x60..=0x77 => byte as usize - 0x60,
                 0x78..=0x7b => {
                     let len = self.parse_uint(byte - 0x77)?;
-                    if len > usize::max_value() as u64 {
+                    if len > usize::MAX as u64 {
                         return Err(self.error(ErrorCode::LengthOutOfRange));
                     }
                     len as usize
@@ -671,7 +671,7 @@ where
                     (byte - 0x20) as u64
                 } else {
                     let u_value = self.parse_uint(byte - 0x37)?;
-                    if u_value > i64::max_value() as u64 {
+                    if u_value > i64::MAX as u64 {
                         return visitor.visit_i128(-1 - i128::from(u_value));
                     }
                     u_value
@@ -687,7 +687,7 @@ where
                     Some(byte as usize - 0x40)
                 } else {
                     let len = self.parse_uint(byte - 0x57)?;
-                    if len > usize::max_value() as u64 {
+                    if len > usize::MAX as u64 {
                         return Err(self.error(ErrorCode::LengthOutOfRange));
                     }
                     Some(len as usize)
@@ -703,7 +703,7 @@ where
                     Some(byte as usize - 0x60)
                 } else {
                     let len = self.parse_uint(byte - 0x77)?;
-                    if len > usize::max_value() as u64 {
+                    if len > usize::MAX as u64 {
                         return Err(self.error(ErrorCode::LengthOutOfRange));
                     }
                     Some(len as usize)
@@ -719,7 +719,7 @@ where
                     Some(byte as usize - 0x80)
                 } else {
                     let len = self.parse_uint(byte - 0x97)?;
-                    if len > usize::max_value() as u64 {
+                    if len > usize::MAX as u64 {
                         return Err(self.error(ErrorCode::LengthOutOfRange));
                     }
                     Some(len as usize)
@@ -735,7 +735,7 @@ where
                     Some(byte as usize - 0xa0)
                 } else {
                     let len = self.parse_uint(byte - 0xb7)?;
-                    if len > usize::max_value() as u64 {
+                    if len > usize::MAX as u64 {
                         return Err(self.error(ErrorCode::LengthOutOfRange));
                     }
                     Some(len as usize)
@@ -832,7 +832,7 @@ where
                             Some(byte as usize - 0x80)
                         } else {
                             let len = self.parse_uint(byte - 0x97)?;
-                            if len > usize::max_value() as u64 {
+                            if len > usize::MAX as u64 {
                                 return Err(self.error(ErrorCode::LengthOutOfRange));
                             }
                             Some(len as usize)

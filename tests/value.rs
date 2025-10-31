@@ -64,7 +64,7 @@ mod std_tests {
         let data_de_value: Value = serde_cbor::from_slice(&data_ser).unwrap();
 
         fn as_object(value: &Value) -> &BTreeMap<Value, Value> {
-            if let Value::Map(ref v) = value {
+            if let Value::Map(v) = value {
                 return v;
             }
             panic!()

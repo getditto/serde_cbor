@@ -298,14 +298,14 @@
 //! there are a few limitations.
 //!
 //! * [Tags] are ignored during deserialization and can't be emitted during
-//!     serialization. This is because Serde has no concept of tagged
-//!     values. See:&nbsp;[#3]
+//!   serialization. This is because Serde has no concept of tagged
+//!   values. See:&nbsp;[#3]
 //! * Unknown [simple values] cause an `UnassignedCode` error.
-//!     The simple values *False* and *True* are recognized and parsed as bool.
-//!     *Null* and *Undefined* are both deserialized as *unit*.
-//!     The *unit* type is serialized as *Null*. See:&nbsp;[#86]
+//!   The simple values *False* and *True* are recognized and parsed as bool.
+//!   *Null* and *Undefined* are both deserialized as *unit*.
+//!   The *unit* type is serialized as *Null*. See:&nbsp;[#86]
 //! * [128-bit integers] can't be directly encoded in CBOR. If you need them
-//!     store them as a byte string. See:&nbsp;[#77]
+//!   store them as a byte string. See:&nbsp;[#77]
 //!
 //! [Tags]: https://tools.ietf.org/html/rfc7049#section-2.4.4
 //! [#3]: https://github.com/pyfisch/cbor/issues/3

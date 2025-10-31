@@ -34,7 +34,7 @@ mod std_tests {
     use serde_cbor::de::{CustomDeserializerOptions, SliceRead};
     use serde_cbor::ser::{CustomSerializerOptions, Serializer};
     use serde_cbor::value::Value;
-    use serde_cbor::{from_slice, to_vec, Deserializer};
+    use serde_cbor::{Deserializer, from_slice, to_vec};
     use serde_core::Deserialize;
 
     pub fn from_slice_legacy<'a, T>(slice: &'a [u8]) -> Result<T, serde_cbor::Error>
